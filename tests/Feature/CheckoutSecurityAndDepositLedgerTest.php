@@ -1,0 +1,461 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Folio;
+use App\Models\Guest;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\PosItem;
+use App\Models\Room;
+use App\Models\Shift;
+use App\Models\User;
+use App\Services\InventoryService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class CheckoutSecurityAndDepositLedgerTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected User $cashier;
+    protected Room $roomClassic;
+    protected Room $room12Staff;
+    protected PosItem $eggItem;
+    protected PosItem $tapsilog;
+    protected PosItem $calamares;
+    protected PosItem $sisigEgg;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(\Database\Seeders\DatabaseSeeder::class);
+
+        $this->cashier = User::where('email', 'pau@sedonapms.com')->first() ?? User::first();
+
+        $this->roomClassic = Room::where('number', '1')->first() ?? Room::create([
+            'number' => '1', 'floor' => 1, 'name' => 'Classic 1', 'type' => 'Classic Room',
+            'status' => 'available', 'is_staff_quarters' => false,
+            'base_rate_3h' => 395, 'base_rate_6h' => 790, 'base_rate_12h' => 1195,
+            'base_rate_24h' => 2100, 'base_rate_promo' => 995,
+        ]);
+
+        $this->room12Staff = Room::where('number', '12')->first() ?? Room::create([
+            'number' => '12', 'floor' => 2, 'name' => 'Staff Quarters', 'type' => 'Staff Quarters',
+            'status' => 'available', 'is_staff_quarters' => true,
+            'base_rate_3h' => 0, 'base_rate_6h' => 0, 'base_rate_12h' => 0,
+            'base_rate_24h' => 0, 'base_rate_promo' => 0,
+        ]);
+
+        $this->eggItem = PosItem::firstOrCreate(
+            ['name' => 'Egg (Fried/Boiled)'],
+            ['category' => 'Kitchen Extras', 'price' => 20.00, 'stock_quantity' => 100, 'is_tracked' => true, 'is_available' => true]
+        );
+
+        $this->tapsilog = PosItem::firstOrCreate(
+            ['name' => 'Tapsilog'],
+            ['category' => 'Breakfast', 'price' => 160.00, 'stock_quantity' => 50, 'is_tracked' => true, 'is_available' => true]
+        );
+
+        $this->calamares = PosItem::firstOrCreate(
+            ['name' => 'Calamares'],
+            ['category' => 'Favorites', 'price' => 180.00, 'stock_quantity' => 30, 'is_tracked' => true, 'is_available' => true]
+        );
+
+        $this->sisigEgg = PosItem::firstOrCreate(
+            ['name' => 'Sizzling Sisig w/ Egg'],
+            ['category' => 'Favorites', 'price' => 230.00, 'stock_quantity' => 25, 'is_tracked' => true, 'is_available' => true]
+        );
+    }
+
+    /**
+     * Test 1: Relational Egg Inventory Deduction for Silog, Calamares, and w/ Egg dishes.
+     */
+    public function test_relational_egg_inventory_deduction(): void
+    {
+        $inventoryService = app(InventoryService::class);
+        $inventoryService->setStockCount($this->eggItem->id, 100);
+        $this->calamares->update(['stock_quantity' => 15]);
+        $this->sisigEgg->update(['stock_quantity' => 10]);
+
+        // Ordering 2x Tapsilog should decrement Tapsilog by 2 AND Egg by 2
+        // All breakfast items share the egg inventory pool, so both reflect 98
+        $inventoryService->atomicDecrementStock($this->tapsilog->id, 2, 'sold', 'REF-001', $this->cashier->id);
+
+        $this->assertEquals(98, $this->tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(98, $this->eggItem->fresh()->stock_quantity);
+
+        // Ordering 3x Calamares should decrement Calamares by 3 AND Egg by 3
+        $inventoryService->atomicDecrementStock($this->calamares->id, 3, 'sold', 'REF-002', $this->cashier->id);
+
+        $this->assertEquals(12, $this->calamares->fresh()->stock_quantity);
+        $this->assertEquals(95, $this->eggItem->fresh()->stock_quantity);
+        $this->assertEquals(95, $this->tapsilog->fresh()->stock_quantity);
+
+        // Ordering 1x Sizzling Sisig w/ Egg should decrement Sisig by 1 AND Egg by 1
+        $inventoryService->atomicDecrementStock($this->sisigEgg->id, 1, 'sold', 'REF-003', $this->cashier->id);
+
+        $this->assertEquals(9, $this->sisigEgg->fresh()->stock_quantity);
+        $this->assertEquals(94, $this->eggItem->fresh()->stock_quantity);
+        $this->assertEquals(94, $this->tapsilog->fresh()->stock_quantity);
+
+        // Ordering Egg directly should decrement Egg by 1 without duplicate/recursive deduction
+        $inventoryService->atomicDecrementStock($this->eggItem->id, 1, 'sold', 'REF-004', $this->cashier->id);
+        $this->assertEquals(93, $this->eggItem->fresh()->stock_quantity);
+        $this->assertEquals(93, $this->tapsilog->fresh()->stock_quantity);
+
+        // Verify inventory events recorded
+        $this->assertDatabaseHas('inventory_events', [
+            'pos_item_id' => $this->eggItem->id,
+            'event_type' => 'recipe_ingredient',
+            'quantity_change' => -2,
+        ]);
+    }
+
+    /**
+     * Test 1b: All breakfast items share the exact same inventory pool as the Egg.
+     */
+    public function test_all_breakfast_items_share_the_exact_same_inventory_as_the_egg(): void
+    {
+        $inventoryService = app(InventoryService::class);
+
+        $egg = PosItem::where('name', 'Egg (Fried/Boiled)')->first();
+        $bangsilog = PosItem::firstOrCreate(['name' => 'Bangsilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
+        $porksilog = PosItem::firstOrCreate(['name' => 'Porksilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
+        $chicksilog = PosItem::firstOrCreate(['name' => 'Chicksilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
+        $tapsilog = PosItem::firstOrCreate(['name' => 'Tapsilog'], ['category' => 'Breakfast', 'price' => 160, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
+        $longsilog = PosItem::firstOrCreate(['name' => 'Longsilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
+        $hotsilog = PosItem::firstOrCreate(['name' => 'Hotsilog'], ['category' => 'Breakfast', 'price' => 130, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
+
+        // Restock Egg to 40
+        $inventoryService->setStockCount($egg->id, 40, 'restock');
+
+        $this->assertEquals(40, $egg->fresh()->stock_quantity);
+        $this->assertEquals(40, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(40, $porksilog->fresh()->stock_quantity);
+        $this->assertEquals(40, $chicksilog->fresh()->stock_quantity);
+        $this->assertEquals(40, $tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(40, $longsilog->fresh()->stock_quantity);
+        $this->assertEquals(40, $hotsilog->fresh()->stock_quantity);
+
+        // Order 4x Bangsilog -> Egg stock becomes 36, all breakfast items become 36
+        $inventoryService->atomicDecrementStock($bangsilog->id, 4, 'sold', 'TEST-B01', $this->cashier->id);
+
+        $this->assertEquals(36, $egg->fresh()->stock_quantity);
+        $this->assertEquals(36, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(36, $porksilog->fresh()->stock_quantity);
+        $this->assertEquals(36, $chicksilog->fresh()->stock_quantity);
+        $this->assertEquals(36, $tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(36, $longsilog->fresh()->stock_quantity);
+        $this->assertEquals(36, $hotsilog->fresh()->stock_quantity);
+
+        // Order 6x Tapsilog -> Egg stock becomes 30, all breakfast items become 30
+        $inventoryService->atomicDecrementStock($tapsilog->id, 6, 'sold', 'TEST-T01', $this->cashier->id);
+
+        $this->assertEquals(30, $egg->fresh()->stock_quantity);
+        $this->assertEquals(30, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(30, $tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(30, $hotsilog->fresh()->stock_quantity);
+
+        // Adjusting any breakfast item stock in /inventory also updates the Master Egg and all other breakfast items
+        $inventoryService->setStockCount($tapsilog->id, 25, 'adjustment');
+
+        $this->assertEquals(25, $egg->fresh()->stock_quantity);
+        $this->assertEquals(25, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(25, $tapsilog->fresh()->stock_quantity);
+
+        // Zero out egg stock -> all breakfast items become Out of Stock (is_available = false)
+        $inventoryService->setStockCount($egg->id, 0, 'adjustment');
+
+        $this->assertEquals(0, $egg->fresh()->stock_quantity);
+        $this->assertFalse((bool) $egg->fresh()->is_available);
+        $this->assertEquals(0, $bangsilog->fresh()->stock_quantity);
+        $this->assertFalse((bool) $bangsilog->fresh()->is_available);
+        $this->assertEquals(0, $tapsilog->fresh()->stock_quantity);
+        $this->assertFalse((bool) $tapsilog->fresh()->is_available);
+    }
+
+    /**
+     * Test 2: Room 12 (Permanent Employee Quarters) Ordering in POS and Dashboard Add-On.
+     */
+    public function test_room_12_staff_quarters_ordering(): void
+    {
+        // View POS index as cashier - Room 12 must be in occupiedRooms dropdown
+        $posResponse = $this->actingAs($this->cashier)->get(route('pos.index'));
+        $posResponse->assertOk();
+        $posResponse->assertSee('Permanent Employee Quarters');
+
+        // Place a POS room_charge order for Room 12
+        $orderData = [
+            'order_type' => 'room_charge',
+            'room_id' => $this->room12Staff->id,
+            'items' => [
+                ['id' => $this->tapsilog->id, 'qty' => 1],
+            ],
+        ];
+
+        $postOrder = $this->actingAs($this->cashier)->post(route('pos.order.store'), $orderData);
+        $postOrder->assertRedirect(route('pos.index'));
+
+        // Staff folio should now exist and hold the order
+        $staffFolio = $this->room12Staff->activeFolio;
+        $this->assertNotNull($staffFolio);
+        $this->assertEquals(0.00, (float)$staffFolio->room_charge);
+        $this->assertNotEmpty($staffFolio->pos_items);
+        $this->assertEquals('Tapsilog', $staffFolio->pos_items[0]['name']);
+
+        // Dashboard Available Rooms table must have "+ Add On" button for Room 12
+        $dashResponse = $this->actingAs($this->cashier)->get(route('dashboard'));
+        $dashResponse->assertOk();
+        $dashResponse->assertSee('+ Add On');
+        $dashResponse->assertSee('Staff Quarters');
+    }
+
+    /**
+     * Test 3: Checkout Page UI Lockdown & Stay Extension (Xtend) Visibility.
+     */
+    public function test_checkout_page_lockdown_and_xtend_visibility(): void
+    {
+        $guest = Guest::create(['name' => 'Honesto Guest', 'contact' => '09123456789', 'headcount' => 2]);
+        $folio = Folio::create([
+            'room_id' => $this->roomClassic->id,
+            'guest_id' => $guest->id,
+            'user_id' => $this->cashier->id,
+            'transaction_id' => 'SCTI-TEST01',
+            'rate_tier' => '3h',
+            'checked_in_at' => now()->subHours(5),
+            'expected_checkout_at' => now()->subHours(2),
+            'status' => 'active',
+            'extra_hours' => 2, // 2 hours extended via Xtend
+            'room_charge' => 395.00,
+            'security_deposit' => 500.00,
+            'deposit_status' => 'held',
+            'discount_amount' => 79.00,
+            'discount_type' => 'SENIOR',
+            'discount_id_ref' => 'OSCA-9921',
+            'pos_items' => [
+                ['name' => 'Mineral Water', 'qty' => 2, 'price' => 25.00, 'subtotal' => 50.00]
+            ],
+        ]);
+
+        $response = $this->actingAs($this->cashier)->get(route('checkout.process', $folio->id));
+        $response->assertOk();
+
+        // 1. Check tamper-proof readonly styles on calculated inputs
+        $response->assertSee('pointer-events: none', false);
+        $response->assertSee('readonly', false);
+
+        // 2. Check Xtend display
+        $response->assertSee('XTEND / EXTENSIONS:');
+        $response->assertSee('+2 Hours');
+        $response->assertSee('Stay Extension (+2h Xtend @ ₱130.00/hr)');
+
+        // 3. Check Security Deposit Ledger section
+        $response->assertSee('SECURITY DEPOSIT LEDGER &amp; TRUST ACCOUNT', false);
+        $response->assertSee('₱500.00');
+
+        // 4. Check Total Discount Deduction is locked to fixed amount with badge
+        $response->assertSee('SENIOR (OSCA-9921)');
+        $response->assertSee('-₱79.00');
+
+        // 5. Check GCash Amount Paid input exists
+        $response->assertSee('name="gcash_amount"', false);
+    }
+
+    /**
+     * Test 4: Checkout Server-Side Tamper Proof Recalculation & GCash Split Settlement.
+     */
+    public function test_checkout_server_side_recalculation_and_split_payment(): void
+    {
+        $guest = Guest::create(['name' => 'Tamper Test Guest', 'contact' => '09120000000', 'headcount' => 1]);
+        $folio = Folio::create([
+            'room_id' => $this->roomClassic->id,
+            'guest_id' => $guest->id,
+            'user_id' => $this->cashier->id,
+            'transaction_id' => 'SCTI-TAMPER',
+            'rate_tier' => '3h',
+            'checked_in_at' => now()->subMinutes(170),
+            'expected_checkout_at' => now()->addMinutes(10),
+            'status' => 'active',
+            'extra_hours' => 0,
+            'room_charge' => 395.00,
+            'security_deposit' => 100.00,
+            'deposit_status' => 'held',
+            'discount_amount' => 40.00, // Fixed DC discount
+            'discount_type' => 'DC',
+            'pos_items' => [],
+        ]);
+
+        // Attempt to tamper with discount and total pay in POST request
+        $tamperedPayload = [
+            'payment_method' => 'split',
+            'cash_tendered' => 200.00,
+            'gcash_amount' => 100.00,
+            'gcash_reference' => 'GCASH-REF-8899',
+            'total_discount' => 300.00,      // Tampered discount!
+            'total_amount_to_pay' => 10.00,  // Tampered balance!
+        ];
+
+        $checkoutResponse = $this->actingAs($this->cashier)->post(route('checkout.submit', $folio->id), $tamperedPayload);
+        $checkoutResponse->assertRedirect(route('dashboard'));
+
+        $folio->refresh();
+
+        // Server must enforce real discount (₱40.00), not tampered ₱300
+        $this->assertEquals(40.00, (float)$folio->discount_amount);
+
+        // Calculation: 395 (room) - 40 (discount) - 100 (deposit) = 255 balance
+        $this->assertEquals(255.00, (float)$folio->net_total);
+        $this->assertEquals('checked_out', $folio->status);
+        $this->assertEquals('applied_to_bill', $folio->deposit_status);
+        $this->assertEquals('split', $folio->payment_method);
+        $this->assertEquals(200.00, (float)$folio->cash_tendered);
+        $this->assertEquals(100.00, (float)$folio->gcash_amount);
+        $this->assertEquals('GCASH-REF-8899', $folio->gcash_reference);
+
+        // Remaining cash due after ₱100 GCash = ₱155. Cash tendered was ₱200, so change = ₱45
+        $this->assertEquals(45.00, (float)$folio->change_due);
+    }
+
+    /**
+     * Test 5: Deposit Slip 80mm Printout (`/folios/{folio}/deposit-slip`).
+     */
+    public function test_deposit_slip_printout_banner_and_content(): void
+    {
+        $guest = Guest::create(['name' => 'Maria Makiling', 'contact' => '09121111111']);
+        $folio = Folio::create([
+            'room_id' => $this->roomClassic->id,
+            'guest_id' => $guest->id,
+            'user_id' => $this->cashier->id,
+            'transaction_id' => 'SCTI-998877',
+            'rate_tier' => '12h',
+            'checked_in_at' => now(),
+            'expected_checkout_at' => now()->addHours(12),
+            'status' => 'active',
+            'security_deposit' => 500.00,
+            'deposit_payment_method' => 'cash',
+            'deposit_status' => 'held',
+        ]);
+
+        $response = $this->actingAs($this->cashier)->get(route('folios.deposit_slip', $folio->id));
+        $response->assertOk();
+        $response->assertSee('SECURITY DEPOSIT LEDGER', false);
+        $response->assertSee('SECURITY DEPOSIT RECEIPT', false);
+        $response->assertSee('DEP-SCTI-998877');
+        $response->assertSee('₱500.00');
+        $response->assertSee('Maria Makiling');
+    }
+
+    /**
+     * Test 6: Order Slip POS-Only Itemization (`/folios/{folio}/orderslip`).
+     */
+    public function test_orderslip_prints_only_pos_and_addon_items(): void
+    {
+        $guest = Guest::create(['name' => 'Dining Guest', 'contact' => '09122222222']);
+        $folio = Folio::create([
+            'room_id' => $this->roomClassic->id,
+            'guest_id' => $guest->id,
+            'user_id' => $this->cashier->id,
+            'transaction_id' => 'SCTI-DINING',
+            'rate_tier' => '6h',
+            'checked_in_at' => now(),
+            'expected_checkout_at' => now()->addHours(6),
+            'status' => 'active',
+            'room_charge' => 790.00,
+            'extra_hours' => 3,
+            'pos_items' => [
+                ['name' => 'Tapsilog', 'qty' => 2, 'price' => 160.00, 'subtotal' => 320.00],
+                ['name' => 'San Mig Light Beer (330ml)', 'qty' => 1, 'price' => 90.00, 'subtotal' => 90.00],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->cashier)->get(route('folios.orderslip', $folio->id));
+        $response->assertOk();
+
+        // Must display POS items and total
+        $response->assertSee('FOOD, BEVERAGE &amp; AMENITIES', false);
+        $response->assertSee('Tapsilog');
+        $response->assertSee('San Mig Light Beer (330ml)');
+        $response->assertSee('410.00'); // 320 + 90
+
+        // Must NOT include room lodging base charge or excess overtime
+        $response->assertDontSee('Room Base (6h)');
+        $response->assertDontSee('Excess Hours (3h)');
+    }
+
+    /**
+     * Test 7: Shift Expected Drawer Cash Deducts Cash Expenses.
+     */
+    public function test_shift_expected_drawer_cash_deducts_cash_expenses(): void
+    {
+        // Clean out pre-seeded expenses and folios for exact formula validation
+        \App\Models\Expense::query()->delete();
+        Folio::query()->delete();
+        Order::query()->delete();
+
+        $shift = Shift::whereNull('closed_at')->first();
+        if (!$shift) {
+            $shift = Shift::create([
+                'opened_by' => $this->cashier->id,
+                'shift_type' => 'Morning',
+                'shift_date' => now()->toDateString(),
+                'opened_at' => now()->subHours(4),
+                'opening_float' => 5000.00,
+                'cash_total' => 5000.00,
+                'gross_revenue' => 0,
+                'room_revenue' => 0,
+                'kitchen_revenue' => 0,
+                'total_expenses' => 0,
+                'expected_cash' => 5000.00,
+                'cash_variance' => 0,
+            ]);
+        } else {
+            $shift->update([
+                'opening_float' => 5000.00,
+                'opened_at' => now()->subHours(4),
+                'total_expenses' => 0,
+                'cash_total' => 5000.00,
+            ]);
+        }
+
+        // Cash sale of ₱1,000
+        $guest = Guest::create(['name' => 'Cash Guest', 'contact' => '09123333333']);
+        Folio::create([
+            'room_id' => $this->roomClassic->id,
+            'guest_id' => $guest->id,
+            'user_id' => $this->cashier->id,
+            'transaction_id' => 'SCTI-CASH01',
+            'rate_tier' => '3h',
+            'checked_in_at' => now()->subHours(2),
+            'expected_checkout_at' => now()->subHours(1),
+            'checked_out_at' => now(),
+            'status' => 'checked_out',
+            'room_charge' => 1000.00,
+            'net_total' => 1000.00,
+            'payment_method' => 'cash',
+            'cash_tendered' => 1000.00,
+            'change_due' => 0.00,
+        ]);
+
+        // Cash expense payout of ₱350
+        \App\Models\Expense::create([
+            'shift_id' => $shift->id,
+            'user_id' => $this->cashier->id,
+            'voucher_number' => 'EXP-TEST-001',
+            'expense_date' => now()->toDateString(),
+            'category' => 'Supplies',
+            'description' => 'Disinfectant Spray & Paper Towels',
+            'amount' => 350.00,
+            'payment_source' => 'cash_drawer',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($this->cashier)->get(route('shifts.index'));
+        $response->assertOk();
+
+        // Formula: 5000 (float) + 1000 (cash) - 350 (expenses) = 5650.00
+        $response->assertSee('₱5,650.00');
+        $response->assertSee('[Float + Cash Inflow - Cash Expenses]');
+    }
+}
