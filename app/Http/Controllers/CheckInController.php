@@ -199,6 +199,8 @@ class CheckInController extends Controller
             'apply_deposit'    => 'nullable',
             'discount_type'    => 'nullable|string|in:none,senior,pwd,dc,NONE,SENIOR,PWD,DC',
             'discount_id_ref'  => 'nullable|string|max:100',
+            'checked_in_at'    => 'nullable|date',
+            'room_charge'      => 'nullable|numeric|min:0',
         ]);
 
         DB::beginTransaction();
@@ -206,14 +208,21 @@ class CheckInController extends Controller
             $folio->load(['room', 'guest', 'orders.items']);
 
             $room = $folio->room;
-            $checkInTime = $folio->checked_in_at;
-            $checkOutTime = now();
-
             $tierHours = $room ? $room->getTierHours($folio->rate_tier) : 3;
             if ($tierHours == 0) $tierHours = 3;
 
             $xtendHours = (int) ($folio->extra_hours ?? 0);
             $totalBookedHours = $tierHours + $xtendHours;
+
+            if ($request->filled('checked_in_at')) {
+                $checkInTime = \Carbon\Carbon::parse($request->input('checked_in_at'));
+                $folio->checked_in_at = $checkInTime;
+                $folio->expected_checkout_at = $checkInTime->copy()->addHours($totalBookedHours);
+            } else {
+                $checkInTime = $folio->checked_in_at;
+            }
+
+            $checkOutTime = now();
 
             $actualHoursDiff = max(1, (int) ceil($checkInTime->diffInMinutes($checkOutTime) / 60));
             $excessHours = max(0, $actualHoursDiff - $totalBookedHours);
@@ -221,9 +230,14 @@ class CheckInController extends Controller
             $addHourUnitPrice = 130;
             $surchargeTotal = ($xtendHours + $excessHours) * $addHourUnitPrice;
 
-            $roomRate = (float) $folio->room_charge;
-            if ($roomRate <= 0 && $room) {
-                $roomRate = $room->getRateForTier($folio->rate_tier);
+            if (array_key_exists('room_charge', $validated) && $validated['room_charge'] !== null) {
+                $roomRate = (float) $validated['room_charge'];
+                $folio->room_charge = $roomRate;
+            } else {
+                $roomRate = (float) $folio->room_charge;
+                if ($roomRate <= 0 && $room) {
+                    $roomRate = $room->getRateForTier($folio->rate_tier);
+                }
             }
 
             $addOnsTotal = 0;
@@ -414,7 +428,22 @@ class CheckInController extends Controller
             'change_due'       => 'nullable|numeric|min:0',
             'discount_type'    => 'nullable|string|in:none,senior,pwd,dc,NONE,SENIOR,PWD,DC',
             'discount_id_ref'  => 'nullable|string|max:100',
+            'checked_in_at'    => 'nullable|date',
+            'room_charge'      => 'nullable|numeric|min:0',
         ]);
+
+        if ($request->filled('checked_in_at')) {
+            $cIn = \Carbon\Carbon::parse($request->input('checked_in_at'));
+            $folio->checked_in_at = $cIn;
+            $tierHours = $folio->room ? $folio->room->getTierHours($folio->rate_tier) : 3;
+            if ($tierHours == 0) $tierHours = 3;
+            $xtendHours = (int) ($folio->extra_hours ?? 0);
+            $folio->expected_checkout_at = $cIn->copy()->addHours($tierHours + $xtendHours);
+        }
+
+        if (array_key_exists('room_charge', $validated) && $validated['room_charge'] !== null) {
+            $folio->room_charge = (float) $validated['room_charge'];
+        }
 
         if (array_key_exists('security_deposit', $validated) && $validated['security_deposit'] !== null) {
             $deposit = (float) $validated['security_deposit'];
@@ -683,7 +712,7 @@ class CheckInController extends Controller
         $folio->load(['room', 'guest', 'cashier']);
         $depositAmount = $request->has('deposit')
             ? max(0, (float) $request->input('deposit'))
-            : (float) ($folio->security_deposit > 0 ? $folio->security_deposit : 500.00);
+            : (float) ($folio->security_deposit ?? 0.00);
 
         return view('checkout.deposit_slip', compact('folio', 'depositAmount'));
     }
@@ -696,14 +725,26 @@ class CheckInController extends Controller
         $folio->load(['room', 'guest', 'cashier', 'orders.items']);
 
         $room = $folio->room;
-        $checkInTime = $folio->checked_in_at;
-        $checkOutTime = ($folio->status === 'checked_out' && $folio->checked_out_at) ? $folio->checked_out_at : now();
 
         $tierHours = $room ? $room->getTierHours($folio->rate_tier) : 3;
         if ($tierHours == 0) $tierHours = 3;
 
         $xtendHours = (int) ($folio->extra_hours ?? 0);
         $totalBookedHours = $tierHours + $xtendHours;
+
+        if ($request->has('checked_in_at')) {
+            $checkInTime = \Carbon\Carbon::parse($request->input('checked_in_at'));
+        } else {
+            $checkInTime = $folio->checked_in_at;
+        }
+
+        $expectedCheckoutAt = $checkInTime->copy()->addHours($totalBookedHours);
+
+        if ($request->has('checked_out_at')) {
+            $checkOutTime = \Carbon\Carbon::parse($request->input('checked_out_at'));
+        } else {
+            $checkOutTime = ($folio->status === 'checked_out' && $folio->checked_out_at) ? $folio->checked_out_at : now();
+        }
 
         $actualHoursDiff = max(1, (int) ceil($checkInTime->diffInMinutes($checkOutTime) / 60));
         $excessHours = max(0, $actualHoursDiff - $totalBookedHours);
@@ -713,9 +754,13 @@ class CheckInController extends Controller
         $excessRate = $excessHours * $addHourUnitPrice;
         $addHoursRate = ($xtendHours + $excessHours) * $addHourUnitPrice;
 
-        $roomRate = (float) $folio->room_charge;
-        if ($roomRate <= 0 && $room) {
-            $roomRate = $room->getRateForTier($folio->rate_tier);
+        if ($request->has('room_charge')) {
+            $roomRate = max(0, (float) $request->input('room_charge'));
+        } else {
+            $roomRate = (float) $folio->room_charge;
+            if ($roomRate <= 0 && $room) {
+                $roomRate = $room->getRateForTier($folio->rate_tier);
+            }
         }
 
         $addOnsTotal = 0;
@@ -751,14 +796,16 @@ class CheckInController extends Controller
             }
         }
 
-        if ($folio->status === 'checked_out' && !$request->has('deposit') && !$request->has('apply_deposit') && !$request->has('discount_type')) {
+        if ($folio->status === 'checked_out' && !$request->has('deposit') && !$request->has('apply_deposit') && !$request->has('discount_type') && !$request->has('room_charge') && !$request->has('checked_in_at')) {
             $grossTotal = (float) $folio->gross_total;
             $amountAfterDiscount = max(0, $grossTotal - $totalDiscount);
             $finalBalanceToPay = (float) $folio->net_total;
             $depositApplied = ($folio->deposit_status === 'applied_to_bill') ? min($deposit, $amountAfterDiscount) : 0.00;
             $remainingDeposit = ($folio->deposit_status === 'applied_to_bill') ? max(0, $deposit - $amountAfterDiscount) : $deposit;
         } else {
-            $grossTotal = (float) ($folio->status === 'checked_out' ? $folio->gross_total : ($roomRate + $addHoursRate + $addOnsTotal));
+            $grossTotal = ($folio->status === 'checked_out' && !$request->has('room_charge') && !$request->has('checked_in_at'))
+                ? (float) $folio->gross_total
+                : (float) ($roomRate + $addHoursRate + $addOnsTotal);
             $amountAfterDiscount = max(0, $grossTotal - $totalDiscount);
 
             if ($applyDeposit) {
@@ -799,7 +846,7 @@ class CheckInController extends Controller
         }
 
         return view('checkout.billing', compact(
-            'folio', 'room', 'checkInTime', 'checkOutTime',
+            'folio', 'room', 'checkInTime', 'checkOutTime', 'expectedCheckoutAt',
             'tierHours', 'xtendHours', 'excessHours', 'totalBookedHours', 'actualHoursDiff',
             'xtendRate', 'excessRate', 'addHoursRate', 'roomRate',
             'addOnsTotal', 'grossTotal', 'totalDiscount', 'discountType', 'discountIdRef', 'amountAfterDiscount', 'deposit', 'applyDeposit', 'depositApplied', 'remainingDeposit', 'finalBalanceToPay',
@@ -836,7 +883,7 @@ class CheckInController extends Controller
         $folio->load(['room', 'guest', 'cashier']);
         $depositAmount = $request->has('deposit')
             ? max(0, (float) $request->input('deposit'))
-            : (float) ($folio->security_deposit > 0 ? $folio->security_deposit : 500.00);
+            : (float) ($folio->security_deposit ?? 0.00);
 
         if ($request->has('refund')) {
             $refundAmount = max(0, (float) $request->input('refund'));

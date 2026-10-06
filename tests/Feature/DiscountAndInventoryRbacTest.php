@@ -137,6 +137,22 @@ class DiscountAndInventoryRbacTest extends TestCase
     {
         $cashier = User::where('email', 'pau@sedonapms.com')->first();
         $shift = Shift::whereNull('closed_at')->first();
+        if (!$shift) {
+            $shift = Shift::create([
+                'opened_by' => $cashier->id,
+                'shift_type' => 'day',
+                'shift_date' => now()->toDateString(),
+                'opened_at' => now(),
+                'opening_float' => 1000.00,
+                'cash_total' => 1000.00,
+                'gross_revenue' => 0.00,
+                'room_revenue' => 0.00,
+                'kitchen_revenue' => 0.00,
+                'total_expenses' => 0.00,
+                'expected_cash' => 1000.00,
+                'cash_variance' => 0.00,
+            ]);
+        }
 
         // Cashier logs a shift operational expense (payout from drawer)
         $expResp = $this->actingAs($cashier)->post(route('shifts.expense.store'), [

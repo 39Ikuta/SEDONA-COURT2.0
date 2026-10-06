@@ -83,6 +83,7 @@ class PrintablesAndRolesTest extends TestCase
             'checked_out_at' => now(),
             'expected_checkout_at' => now(),
             'payment_method' => 'cash',
+            'security_deposit' => 500.00,
         ]);
 
         $response = $this->actingAs($cashier)->get(route('folios.deposit_refund', $folio));
@@ -95,7 +96,13 @@ class PrintablesAndRolesTest extends TestCase
     public function test_shift_remittance_slip()
     {
         $cashier = User::where('email', 'pau@sedonapms.com')->first();
-        $shift = Shift::first();
+        $shift = Shift::first() ?? Shift::create([
+            'opened_by' => $cashier->id,
+            'shift_type' => 'day',
+            'shift_date' => now()->toDateString(),
+            'opened_at' => now(),
+            'is_frozen' => false,
+        ]);
 
         $response = $this->actingAs($cashier)->get(route('shifts.remittance_slip', $shift));
         $response->assertStatus(200);

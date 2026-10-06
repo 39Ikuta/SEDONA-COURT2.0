@@ -105,6 +105,9 @@ Route::middleware('auth')->group(function () {
         // Master Pricing & Rates Editor
         Route::get('/pricing', [RoomController::class, 'pricingIndex'])->name('pricing.index');
         Route::post('/pricing', [RoomController::class, 'updatePricing'])->name('pricing.update');
+        // POS Catalog Item Management
+        Route::post('/pricing/items', [RoomController::class, 'storeItem'])->name('pricing.items.store');
+        Route::delete('/pricing/items/{posItem}', [RoomController::class, 'destroyItem'])->name('pricing.items.destroy');
 
         // Force Checkout Loss Slip Approvals
         Route::post('/force-checkouts/{folio}/approve', [CheckInController::class, 'approveForceCheckout'])->name('force_checkout.approve');

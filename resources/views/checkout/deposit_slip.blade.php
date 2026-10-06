@@ -140,48 +140,20 @@
         </div>
         <div class="row">
             <span>Trust Status:</span>
-            <span class="font-bold">{{ strtoupper($folio->deposit_status ?: 'HELD IN TRUST') }}</span>
+            <span class="font-bold">{{ $depositAmount <= 0 ? 'NONE' : strtoupper(str_replace('_', ' ', $folio->deposit_status ?: 'HELD IN TRUST')) }}</span>
         </div>
 
         <div class="double-divider"></div>
 
         <!-- Amount Box -->
-        <div style="text-align: center; padding: 6px 0;">
+        <div style="text-align: center; padding: 8px 0;">
             <div style="font-size: 10px; font-weight: bold; text-transform: uppercase;">SECURITY DEPOSIT AMOUNT HELD IN TRUST:</div>
-            <div class="font-bold" style="font-size: 18px; margin-top: 2px;">
+            <div class="font-bold" style="font-size: 20px; margin-top: 4px;">
                 ₱{{ number_format($depositAmount, 2) }}
-            </div>
-            <div style="font-size: 9px; color: #555;">(Philippine Pesos • Room &amp; Amenity Security)</div>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Deposit Ledger Settlement Policy -->
-        <div style="font-size: 9px; color: #222; margin: 4px 0;">
-            <div class="row">
-                <span>1. Room Security Deposit:</span>
-                <span class="font-bold">₱{{ number_format($depositAmount, 2) }}</span>
-            </div>
-            <div class="row">
-                <span>2. Applied to Check Out Bill:</span>
-                <span class="font-bold">[ AUTOMATIC CREDIT ]</span>
-            </div>
-            <div class="row">
-                <span>3. Cash Refund Upon Clearance:</span>
-                <span class="font-bold">[ FULLY ELIGIBLE ]</span>
             </div>
         </div>
 
         <div class="double-divider"></div>
-
-        <!-- Terms -->
-        <div style="font-size: 9px; color: #333; line-height: 1.35;">
-            <strong>TERMS &amp; INDEMNITY AGREEMENT:</strong>
-            <div style="margin-top: 3px;">1. Deposit serves as security guarantee for room keycard, TV/aircon remotes, and property damage.</div>
-            <div>2. Amount will be automatically applied to offset folio charges or refunded in full upon room clearance.</div>
-            <div>3. Missing keycard or damaged property will incur statutory deductions per hotel tariff.</div>
-            <div>4. Please present this slip upon checkout to redeem or audit.</div>
-        </div>
 
         <!-- Signatures -->
         <div class="sig-block">

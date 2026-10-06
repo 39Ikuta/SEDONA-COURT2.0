@@ -37,12 +37,29 @@
 
                     <div class="flex items-center">
                         <label class="w-32 font-bold text-slate-700 text-[11px]">CHECK IN TIME:</label>
-                        <input type="text" value="{{ $checkInTime->format('m/d/Y h:i A') }}" readonly tabindex="-1" style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" class="form-control-hms !text-left text-[11px] font-mono">
+                        <input type="datetime-local" 
+                               name="checked_in_at" 
+                               id="inpCheckInTime" 
+                               value="{{ $checkInTime->format('Y-m-d\TH:i') }}" 
+                               onchange="onCheckInTimeChange(this.value)" 
+                               class="form-control-hms !text-left text-[11px] font-mono font-bold bg-white text-slate-900 border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-inner cursor-pointer" 
+                               title="Cashier: Click to edit guest check-in date and time">
                     </div>
 
                     <div class="flex items-center">
                         <label class="w-32 font-bold text-slate-700 text-[11px]">BASE ROOM RATE:</label>
-                        <input type="text" id="inpRoomRate" value="₱{{ number_format($roomRate, 2) }}" readonly tabindex="-1" style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" class="form-control-hms font-mono font-bold text-slate-800">
+                        <div class="relative inline-flex items-center w-full">
+                            <span class="absolute left-2.5 text-slate-500 font-bold font-mono text-xs pointer-events-none select-none">₱</span>
+                            <input type="number" 
+                                   step="0.01" 
+                                   min="0" 
+                                   name="room_charge" 
+                                   id="inpRoomRate" 
+                                   value="{{ number_format($roomRate, 2, '.', '') }}" 
+                                   oninput="onRoomRateChange(this.value)" 
+                                   class="form-control-hms font-mono font-bold text-slate-900 !w-full pl-7 text-left bg-white border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-inner" 
+                                   title="Cashier: Edit room base rate">
+                        </div>
                     </div>
                 </div>
 
@@ -78,12 +95,12 @@
 
                     <div class="flex items-center">
                         <label class="w-44 font-bold text-slate-700 text-[11px]">ACTUAL STAY DIFF:</label>
-                        <input type="text" value="{{ $actualHoursDiff }} Hours" readonly tabindex="-1" style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" class="form-control-hms font-mono">
+                        <input type="text" id="inpActualStayDiff" value="{{ $actualHoursDiff }} Hours" readonly tabindex="-1" style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" class="form-control-hms font-mono">
                     </div>
 
                     <div class="flex items-center">
                         <label class="w-44 font-bold text-slate-700 text-[11px]">EXCESS OVERTIME:</label>
-                        <input type="text" value="{{ $excessHours }} Hours" readonly tabindex="-1" style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" class="form-control-hms font-mono font-bold text-purple-700">
+                        <input type="text" id="inpExcessOvertime" value="{{ $excessHours }} Hours" readonly tabindex="-1" style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" class="form-control-hms font-mono font-bold text-purple-700">
                     </div>
                 </div>
             </div>
@@ -148,7 +165,7 @@
                 </div>
 
                 <div class="flex items-center space-x-2">
-                    <a href="{{ route('folios.deposit_slip', $folio->id) }}@if($deposit > 0)?deposit={{ $deposit }}@endif" id="depositSlipTopLink" target="_blank" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] rounded flex items-center space-x-1 shadow-sm">
+                    <a href="{{ route('folios.deposit_slip', $folio->id) }}?deposit={{ $deposit }}" id="depositSlipTopLink" target="_blank" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] rounded flex items-center space-x-1 shadow-sm">
                         <span>💰</span>
                         <span>Print Official Deposit Slip</span>
                     </a>
@@ -177,8 +194,8 @@
                                 <tr class="border-b bg-slate-50/50">
                                     <td class="p-1.5 border-r font-medium">Room Lodging Base Charge ({{ strtoupper($folio->rate_tier) }} Tier)</td>
                                     <td class="p-1.5 border-r text-center font-mono">1</td>
-                                    <td class="p-1.5 border-r text-right font-mono">{{ number_format($roomRate, 2) }}</td>
-                                    <td class="p-1.5 text-right font-mono font-bold">{{ number_format($roomRate, 2) }}</td>
+                                    <td class="p-1.5 border-r text-right font-mono" id="tdRoomRatePrice">{{ number_format($roomRate, 2) }}</td>
+                                    <td class="p-1.5 text-right font-mono font-bold" id="tdRoomRateAmount">{{ number_format($roomRate, 2) }}</td>
                                 </tr>
 
                                 <!-- Xtend Stay Extension if applicable -->
@@ -192,14 +209,12 @@
                                 @endif
 
                                 <!-- Excess Overtime if applicable -->
-                                @if($excessHours > 0)
-                                    <tr class="border-b bg-purple-50/50">
-                                        <td class="p-1.5 border-r font-medium text-purple-900">Excess Overtime (+{{ $excessHours }}h Overstay @ ₱130.00/hr)</td>
-                                        <td class="p-1.5 border-r text-center font-mono">{{ $excessHours }}</td>
-                                        <td class="p-1.5 border-r text-right font-mono">130.00</td>
-                                        <td class="p-1.5 text-right font-mono font-bold text-purple-800">{{ number_format($excessHours * 130, 2) }}</td>
-                                    </tr>
-                                @endif
+                                <tr class="border-b bg-purple-50/50" id="rowExcessOvertimeItem" style="{{ $excessHours > 0 ? '' : 'display: none;' }}">
+                                    <td class="p-1.5 border-r font-medium text-purple-900" id="tdExcessHoursLabel">Excess Overtime (+<span id="tdExcessHoursQtyText">{{ $excessHours }}</span>h Overstay @ ₱130.00/hr)</td>
+                                    <td class="p-1.5 border-r text-center font-mono" id="tdExcessHoursQty">{{ $excessHours }}</td>
+                                    <td class="p-1.5 border-r text-right font-mono">130.00</td>
+                                    <td class="p-1.5 text-right font-mono font-bold text-purple-800" id="tdExcessHoursAmount">{{ number_format($excessHours * 130, 2) }}</td>
+                                </tr>
 
                                 <!-- POS / Kitchen / Amenity Items -->
                                 @forelse($addOnItems as $addOn)
@@ -337,13 +352,13 @@
             <!-- Bottom Actions Row -->
             <div class="mt-4 pt-3 border-t flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center space-x-2">
-                    <a href="{{ route('folios.billing', $folio->id) }}@if($deposit > 0)?deposit={{ $deposit }}@endif" id="billingStatementLink" target="_blank" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded">
+                    <a href="{{ route('folios.billing', $folio->id) }}?deposit={{ $deposit }}&checked_out_at={{ urlencode($checkOutTime->toIso8601String()) }}" id="billingStatementLink" target="_blank" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded">
                         📄 Statement / Billing
                     </a>
-                    <a href="{{ route('folios.deposit_slip', $folio->id) }}@if($deposit > 0)?deposit={{ $deposit }}@endif" id="depositSlipBottomLink" target="_blank" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded">
+                    <a href="{{ route('folios.deposit_slip', $folio->id) }}?deposit={{ $deposit }}" id="depositSlipBottomLink" target="_blank" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded">
                         💰 Deposit Slip
                     </a>
-                    <a href="{{ route('folios.deposit_refund', $folio->id) }}@if($deposit > 0)?deposit={{ $deposit }}@endif" id="depositRefundLink" target="_blank" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded">
+                    <a href="{{ route('folios.deposit_refund', $folio->id) }}?deposit={{ $deposit }}" id="depositRefundLink" target="_blank" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded">
                         💵 Deposit Refund
                     </a>
                     <a href="{{ route('folios.orderslip', $folio->id) }}" target="_blank" class="px-3 py-1.5 bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-xs rounded">
@@ -367,7 +382,15 @@
 
 @push('scripts')
 <script>
-    const grossTotal = {{ $totalCharge }};
+    let currentRoomRate = {{ (float)$roomRate }};
+    let tierHours = {{ (int)$tierHours }};
+    let xtendHours = {{ (int)$xtendHours }};
+    let totalBookedHours = {{ (int)$totalBookedHours }};
+    let checkOutTimestamp = new Date("{{ $checkOutTime->toIso8601String() }}").getTime();
+    let addOnsTotal = {{ (float)$addOnsTotal }};
+    let addHourUnitPrice = 130;
+    let addHoursRate = {{ (float)$addHoursRate }};
+    let grossTotal = {{ (float)$totalCharge }};
     const discountRates = @json($discountOptions);
     let currentDiscountType = "{{ strtolower($folio->discount_type ?? 'none') }}";
     let currentDiscountAmount = {{ (float)($totalDiscount ?? 0) }};
@@ -376,6 +399,7 @@
     let applyDeposit = {{ $applyDeposit ? 'true' : 'false' }};
     let finalBalanceToPay = applyDeposit ? Math.max(0, amountAfterDiscount - currentDeposit) : amountAfterDiscount;
     let depositSaveTimer = null;
+    let checkInSaveTimer = null;
 
     const baseBillingUrl = "{{ route('folios.billing', $folio->id) }}";
     const baseDepositSlipUrl = "{{ route('folios.deposit_slip', $folio->id) }}";
@@ -444,6 +468,82 @@
 
         updateCalculations();
         saveSettlementDraftToServer();
+    }
+
+    function onCheckInTimeChange(val) {
+        if (!val) return;
+        const cInDate = new Date(val);
+        if (isNaN(cInDate.getTime())) return;
+
+        const diffMs = Math.max(0, checkOutTimestamp - cInDate.getTime());
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        const actualHoursDiff = Math.max(1, Math.ceil(diffMinutes / 60));
+        const excessHours = Math.max(0, actualHoursDiff - totalBookedHours);
+        addHoursRate = (xtendHours + excessHours) * addHourUnitPrice;
+
+        const inpActualStayDiff = document.getElementById('inpActualStayDiff');
+        if (inpActualStayDiff) inpActualStayDiff.value = `${actualHoursDiff} Hours`;
+
+        const inpExcessOvertime = document.getElementById('inpExcessOvertime');
+        if (inpExcessOvertime) inpExcessOvertime.value = `${excessHours} Hours`;
+
+        const inpAddHoursRate = document.getElementById('inpAddHoursRate');
+        if (inpAddHoursRate) inpAddHoursRate.value = `₱${addHoursRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        const rowExcess = document.getElementById('rowExcessOvertimeItem');
+        if (rowExcess) {
+            if (excessHours > 0) {
+                rowExcess.style.display = '';
+                const qtyText = document.getElementById('tdExcessHoursQtyText');
+                if (qtyText) qtyText.textContent = excessHours;
+                const qty = document.getElementById('tdExcessHoursQty');
+                if (qty) qty.textContent = excessHours;
+                const amt = document.getElementById('tdExcessHoursAmount');
+                if (amt) amt.textContent = (excessHours * addHourUnitPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } else {
+                rowExcess.style.display = 'none';
+            }
+        }
+
+        recalcGrossAndSettlement();
+
+        clearTimeout(checkInSaveTimer);
+        checkInSaveTimer = setTimeout(() => {
+            saveSettlementDraftToServer();
+        }, 500);
+    }
+
+    function onRoomRateChange(val) {
+        currentRoomRate = Math.max(0, parseFloat(val) || 0);
+
+        const tdRoomRatePrice = document.getElementById('tdRoomRatePrice');
+        const tdRoomRateAmount = document.getElementById('tdRoomRateAmount');
+        if (tdRoomRatePrice) tdRoomRatePrice.textContent = currentRoomRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (tdRoomRateAmount) tdRoomRateAmount.textContent = currentRoomRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        recalcGrossAndSettlement();
+
+        clearTimeout(checkInSaveTimer);
+        checkInSaveTimer = setTimeout(() => {
+            saveSettlementDraftToServer();
+        }, 500);
+    }
+
+    function recalcGrossAndSettlement() {
+        const subTotal = currentRoomRate + addHoursRate + addOnsTotal;
+        grossTotal = subTotal;
+
+        const inpSubTotal = document.getElementById('inpSubTotal');
+        if (inpSubTotal) inpSubTotal.value = `₱${subTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        const inpTotalCharge = document.getElementById('inpTotalCharge');
+        if (inpTotalCharge) inpTotalCharge.value = `₱${grossTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        amountAfterDiscount = Math.max(0, grossTotal - currentDiscountAmount);
+        const inpAmountToPay = document.getElementById('inpAmountToPay');
+        if (inpAmountToPay) inpAmountToPay.value = `₱${amountAfterDiscount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        updateCalculations();
     }
 
     function onApplyDepositToggle(checked) {
@@ -540,21 +640,22 @@
         // Update printable slip links
         const depositSlipTop = document.getElementById('depositSlipTopLink');
         if (depositSlipTop) {
-            depositSlipTop.href = currentDeposit > 0 ? `${baseDepositSlipUrl}?deposit=${currentDeposit}` : baseDepositSlipUrl;
+            depositSlipTop.href = `${baseDepositSlipUrl}?deposit=${currentDeposit}`;
         }
 
         const depositSlipBottom = document.getElementById('depositSlipBottomLink');
         if (depositSlipBottom) {
-            depositSlipBottom.href = currentDeposit > 0 ? `${baseDepositSlipUrl}?deposit=${currentDeposit}` : baseDepositSlipUrl;
+            depositSlipBottom.href = `${baseDepositSlipUrl}?deposit=${currentDeposit}`;
         }
 
         const depositRefund = document.getElementById('depositRefundLink');
         if (depositRefund) {
-            depositRefund.href = currentDeposit > 0 ? `${baseDepositRefundUrl}?deposit=${currentDeposit}&apply_deposit=${applyDeposit ? 1 : 0}&refund=${remainingDeposit}` : baseDepositRefundUrl;
+            depositRefund.href = `${baseDepositRefundUrl}?deposit=${currentDeposit}&apply_deposit=${applyDeposit ? 1 : 0}&refund=${remainingDeposit}`;
         }
 
         // Re-sync payment and change calculations
         togglePaymentInputs();
+        syncBillingStatementUrl();
     }
 
     function syncBillingStatementUrl() {
@@ -578,9 +679,7 @@
         }
 
         const url = new URL(baseBillingUrl);
-        if (currentDeposit > 0) {
-            url.searchParams.set('deposit', currentDeposit);
-        }
+        url.searchParams.set('deposit', currentDeposit);
         url.searchParams.set('apply_deposit', applyDeposit ? '1' : '0');
         url.searchParams.set('discount_type', currentDiscountType);
         if (discountRef) {
@@ -599,6 +698,13 @@
         if (change > 0) {
             url.searchParams.set('change_due', change);
         }
+
+        const cInInput = document.getElementById('inpCheckInTime');
+        if (cInInput && cInInput.value) {
+            url.searchParams.set('checked_in_at', cInInput.value);
+        }
+        url.searchParams.set('room_charge', currentRoomRate);
+        url.searchParams.set('checked_out_at', "{{ $checkOutTime->toIso8601String() }}");
 
         billingLink.href = url.toString();
     }
@@ -637,6 +743,8 @@
                 apply_deposit: applyDeposit ? 1 : 0,
                 discount_type: currentDiscountType,
                 discount_id_ref: discountRef,
+                checked_in_at: document.getElementById('inpCheckInTime')?.value,
+                room_charge: currentRoomRate,
                 payment_method: method,
                 cash_tendered: cashTendered,
                 gcash_amount: gcashAmount,

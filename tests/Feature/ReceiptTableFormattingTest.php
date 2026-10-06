@@ -25,7 +25,7 @@ class ReceiptTableFormattingTest extends TestCase
 
         $this->cashier = User::where('email', 'pau@sedonapms.com')->first() ?? User::first();
         $this->room = Room::where('number', '1')->first() ?? Room::first();
-        $this->guest = Guest::first() ?? Guest::factory()->create();
+        $this->guest = Guest::first() ?? Guest::create(['name' => 'Test Guest', 'contact' => '09171112222', 'headcount' => 1]);
     }
 
     /**

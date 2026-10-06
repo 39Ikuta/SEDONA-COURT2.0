@@ -398,7 +398,7 @@ class CheckoutSecurityAndDepositLedgerTest extends TestCase
         if (!$shift) {
             $shift = Shift::create([
                 'opened_by' => $this->cashier->id,
-                'shift_type' => 'Morning',
+                'shift_type' => 'day',
                 'shift_date' => now()->toDateString(),
                 'opened_at' => now()->subHours(4),
                 'opening_float' => 5000.00,
@@ -458,4 +458,52 @@ class CheckoutSecurityAndDepositLedgerTest extends TestCase
         $response->assertSee('₱5,650.00');
         $response->assertSee('[Float + Cash Inflow - Cash Expenses]');
     }
+
+    public function test_cashier_can_edit_check_in_time_and_room_rate_at_checkout(): void
+    {
+        $guest = \App\Models\Guest::create([
+            'name' => 'Editable Time Guest',
+            'phone' => '09123456789',
+            'headcount' => 2,
+        ]);
+
+        $folio = \App\Models\Folio::create([
+            'room_id' => $this->roomClassic->id,
+            'guest_id' => $guest->id,
+            'user_id' => $this->cashier->id,
+            'transaction_id' => \App\Models\Folio::generateTransactionId(),
+            'rate_tier' => '3h',
+            'checked_in_at' => now()->subHours(2),
+            'expected_checkout_at' => now()->addHour(),
+            'status' => 'active',
+            'room_charge' => 395.00,
+            'gross_total' => 395.00,
+            'net_total' => 395.00,
+        ]);
+
+        // Verify the checkout process page displays the editable inputs
+        $response = $this->actingAs($this->cashier)->get(route('checkout.process', $folio->id));
+        $response->assertOk();
+        $response->assertSee('name="checked_in_at"', false);
+        $response->assertSee('name="room_charge"', false);
+
+        // Cashier edits check-in time to ~4.8 hours ago (5 hour billing bucket) and adjusts base room rate to 450
+        $newCheckIn = now()->subMinutes(290)->format('Y-m-d H:i:s');
+        $submitResponse = $this->actingAs($this->cashier)->post(route('checkout.submit', $folio->id), [
+            'payment_method' => 'cash',
+            'cash_tendered' => 1000.00,
+            'checked_in_at' => $newCheckIn,
+            'room_charge' => 450.00,
+        ]);
+
+        $submitResponse->assertRedirect(route('dashboard'));
+
+        $folio->refresh();
+        $this->assertEquals(450.00, (float) $folio->room_charge);
+        $this->assertEquals(\Carbon\Carbon::parse($newCheckIn)->format('Y-m-d H:i'), $folio->checked_in_at->format('Y-m-d H:i'));
+        // 5 hours actual stay - 3 hours tier = 2 excess hours = 2 * 130 = 260 surcharge
+        // Total charge = 450 + 260 = 710
+        $this->assertEquals(710.00, (float) $folio->gross_total);
+    }
 }
+

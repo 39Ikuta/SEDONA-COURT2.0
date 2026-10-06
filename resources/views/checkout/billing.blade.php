@@ -157,16 +157,36 @@
         </div>
         <div class="row">
             <span>Check-In:</span>
-            <span>{{ $folio->checked_in_at->format('m/d/Y h:i A') }}</span>
+            <span>{{ ($checkInTime ?? $folio->checked_in_at)->format('m/d/Y h:i A') }}</span>
         </div>
         <div class="row">
             <span>Expected Out:</span>
-            <span>{{ $folio->expected_checkout_at->format('m/d/Y h:i A') }}</span>
+            <span>{{ ($expectedCheckoutAt ?? $folio->expected_checkout_at)->format('m/d/Y h:i A') }}</span>
+        </div>
+        <div class="row">
+            <span>Check-Out:</span>
+            <span>{{ ($checkOutTime ?? now())->format('m/d/Y h:i A') }}</span>
         </div>
         <div class="row">
             <span>Stay Tier:</span>
             <span>{{ strtoupper($folio->rate_tier) }} ({{ $tierHours }} Hours)</span>
         </div>
+        <div class="row">
+            <span>Actual Stay:</span>
+            <span class="font-bold">{{ $actualHoursDiff }} {{ \Illuminate\Support\Str::plural('Hour', $actualHoursDiff) }}</span>
+        </div>
+        @if($excessHours > 0)
+        <div class="row">
+            <span>Excess Overtime:</span>
+            <span class="font-bold">{{ $excessHours }} {{ \Illuminate\Support\Str::plural('Hour', $excessHours) }}</span>
+        </div>
+        @endif
+        @if($xtendHours > 0)
+        <div class="row">
+            <span>Stay Extension:</span>
+            <span class="font-bold">+{{ $xtendHours }} {{ \Illuminate\Support\Str::plural('Hour', $xtendHours) }}</span>
+        </div>
+        @endif
         <div class="row">
             <span>Bill Prepared:</span>
             <span>{{ now()->format('m/d/Y h:i A') }}</span>
@@ -191,7 +211,7 @@
                     <td class="col-total font-mono font-bold">{{ number_format($roomRate, 2) }}</td>
                 </tr>
 
-                @if($folio->status === 'checked_out')
+                @if($folio->status === 'checked_out' && !request()->has('checked_in_at') && !request()->has('checked_out_at'))
                     @if($folio->extra_hours > 0)
                         <tr>
                             <td class="col-item">Excess Hours ({{ $folio->extra_hours }}h)</td>
@@ -308,6 +328,11 @@
                     <span>₱{{ number_format($remainingDeposit, 2) }}</span>
                 </div>
             @endif
+        @else
+            <div class="row">
+                <span>Less: Security Deposit:</span>
+                <span>₱0.00</span>
+            </div>
         @endif
 
         <div class="double-divider"></div>
@@ -363,16 +388,14 @@
                     </div>
                 @endif
             @else
-                @if($cashTendered > 0)
-                    <div class="row">
-                        <span>Cash Tendered:</span>
-                        <span>₱{{ number_format($cashTendered, 2) }}</span>
-                    </div>
-                    <div class="row font-bold">
-                        <span>Change Due to Guest:</span>
-                        <span>₱{{ number_format($changeDue, 2) }}</span>
-                    </div>
-                @endif
+                <div class="row">
+                    <span>Cash Tendered:</span>
+                    <span>₱{{ number_format($cashTendered, 2) }}</span>
+                </div>
+                <div class="row font-bold">
+                    <span>Change Due to Guest:</span>
+                    <span>₱{{ number_format($changeDue, 2) }}</span>
+                </div>
             @endif
             <div class="double-divider"></div>
         @endif

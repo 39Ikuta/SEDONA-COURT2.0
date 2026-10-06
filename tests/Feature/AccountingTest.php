@@ -86,6 +86,7 @@ class AccountingTest extends TestCase
 
         $folio = Folio::where('room_id', $room->id)->where('status', 'active')->first();
         $this->assertNotNull($folio);
+        $folio->update(['security_deposit' => 500.00]);
 
         // 1. Official Receipt
         $receiptResp = $this->actingAs($cashier)->get(route('folios.receipt', $folio->id));

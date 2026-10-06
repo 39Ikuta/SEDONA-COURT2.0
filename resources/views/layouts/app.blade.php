@@ -240,6 +240,49 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
+
+        /* Owner tab bar (light, executive) */
+        .owner-tabs {
+            background-color: #faf8f4;
+            border-bottom: 1px solid #e8e2d6;
+        }
+        .owner-tabs .exec-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 10px;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #6b6257;
+            text-decoration: none;
+            border: 1px solid transparent;
+            background: transparent;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+        .owner-tabs .exec-tab:hover {
+            background-color: #f1ece2;
+        }
+        .owner-tabs .exec-tab.active {
+            background-color: #f6e8e8;
+            color: #421A2B;
+            border-color: #e3c9c9;
+            font-weight: 700;
+        }
+        .owner-tabs .tab-menu a {
+            display: block;
+            padding: 9px 13px;
+            color: #334155;
+            text-decoration: none;
+            white-space: nowrap;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .owner-tabs .tab-menu a:hover {
+            background-color: #f1f5f9;
+        }
     </style>
     @stack('styles')
 </head>
@@ -291,66 +334,8 @@
                             Stock
                         </a>
                     @else
-                        {{-- Admin / owner / manager: 5 grouped menus --}}
-                        <div class="relative" data-dropdown>
-                            <button type="button" class="nav-trigger {{ request()->routeIs('dashboard', 'rooms.*', 'bookings.*', 'checkout.*', 'folios.*', 'checkin.*') ? 'active' : '' }}" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
-                                Front Desk <span class="text-[9px]">▼</span>
-                            </button>
-                            <div class="nav-menu hidden absolute left-0 mt-0 w-52 bg-[#341421] shadow-xl z-50 text-xs border border-white/10 rounded-b" role="menu">
-                                <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}" role="menuitem">Check In / Out (Grid)</a>
-                                <a href="{{ route('bookings.index') }}" class="{{ request()->routeIs('bookings.*') ? 'active' : '' }}" role="menuitem">Reservations</a>
-                            </div>
-                        </div>
-
-                        <div class="relative" data-dropdown>
-                            <button type="button" class="nav-trigger {{ request()->routeIs('pos.*', 'kitchen.*') ? 'active' : '' }}" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
-                                Sales &amp; Kitchen <span class="text-[9px]">▼</span>
-                            </button>
-                            <div class="nav-menu hidden absolute left-0 mt-0 w-52 bg-[#341421] shadow-xl z-50 text-xs border border-white/10 rounded-b" role="menu">
-                                <a href="{{ route('pos.index') }}" class="{{ request()->routeIs('pos.*') ? 'active' : '' }}" role="menuitem">Point of Sale (POS)</a>
-                                <a href="{{ route('kitchen.view') }}" class="{{ request()->routeIs('kitchen.view') ? 'active' : '' }}" role="menuitem">Kitchen KDS</a>
-                                <a href="{{ route('kitchen.tv') }}" target="_blank" role="menuitem">Kitchen TV ↗</a>
-                                <a href="{{ route('kiosk.view') }}" target="_blank" role="menuitem">Lobby Display ↗</a>
-                            </div>
-                        </div>
-
-                        <div class="relative" data-dropdown>
-                            <button type="button" class="nav-trigger {{ request()->routeIs('inventory.*', 'shifts.*') ? 'active' : '' }}" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
-                                Operations <span class="text-[9px]">▼</span>
-                            </button>
-                            <div class="nav-menu hidden absolute left-0 mt-0 w-52 bg-[#341421] shadow-xl z-50 text-xs border border-white/10 rounded-b" role="menu">
-                                <a href="{{ route('inventory.index') }}" class="{{ request()->routeIs('inventory.*') ? 'active' : '' }}" role="menuitem">Stock &amp; Recount</a>
-                                <a href="{{ route('shifts.index') }}" class="{{ request()->routeIs('shifts.*') ? 'active' : '' }}" role="menuitem">Shifts &amp; Drawer</a>
-                            </div>
-                        </div>
-
-                        <div class="relative" data-dropdown>
-                            <button type="button" class="nav-trigger {{ request()->routeIs('reports.*', 'admin.accounting.*') ? 'active' : '' }}" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
-                                Insights <span class="text-[9px]">▼</span>
-                            </button>
-                            <div class="nav-menu hidden absolute left-0 mt-0 w-60 bg-[#341421] shadow-xl z-50 text-xs border border-white/10 rounded-b" role="menu">
-                                <a href="{{ route('reports.index') }}" class="{{ request()->routeIs('reports.*') ? 'active' : '' }}" role="menuitem">Weekly Sales &amp; Occupancy</a>
-                                @if(auth()->check() && auth()->user()->hasAnyRole(['admin', 'owner']))
-                                    <a href="{{ route('admin.accounting.pnl') }}" class="{{ request()->routeIs('admin.accounting.pnl') ? 'active' : '' }}" role="menuitem">Executive P&amp;L</a>
-                                    <a href="{{ route('admin.accounting.expenses') }}" class="{{ request()->routeIs('admin.accounting.expenses') ? 'active' : '' }}" role="menuitem">Expenses &amp; Petty Cash</a>
-                                    <a href="{{ route('admin.accounting.ledger') }}" class="{{ request()->routeIs('admin.accounting.ledger') ? 'active' : '' }}" role="menuitem">Audit Journal &amp; Cash Flow</a>
-                                    <a href="{{ route('admin.accounting.shifts') }}" class="{{ request()->routeIs('admin.accounting.shifts') ? 'active' : '' }}" role="menuitem">Shift Reconciliations</a>
-                                    <a href="{{ route('admin.accounting.losses') }}" class="{{ request()->routeIs('admin.accounting.losses') ? 'active' : '' }}" role="menuitem">Loss Slips (FCE-######)</a>
-                                @endif
-                            </div>
-                        </div>
-
-                        @if(auth()->check() && auth()->user()->hasAnyRole(['admin', 'owner']))
-                            <div class="relative" data-dropdown>
-                                <button type="button" class="nav-trigger {{ request()->routeIs('admin.pricing.*', 'admin.users.*') ? 'active' : '' }}" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
-                                    Admin <span class="text-[9px]">▼</span>
-                                </button>
-                                <div class="nav-menu hidden absolute left-0 mt-0 w-56 bg-[#341421] shadow-xl z-50 text-xs border border-white/10 rounded-b" role="menu">
-                                    <a href="{{ route('admin.pricing.index') }}" class="{{ request()->routeIs('admin.pricing.*') ? 'active' : '' }}" role="menuitem">Master Pricing Editor</a>
-                                    <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}" role="menuitem">Staff Accounts &amp; RBAC</a>
-                                </div>
-                            </div>
-                        @endif
+                        {{-- Owner / admin / manager: navigate via the light executive tab bar below --}}
+                        <span class="hidden md:inline px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-white/50">Executive View</span>
                     @endif
                 </nav>
             </div>
@@ -398,16 +383,85 @@
                 <a href="{{ route('shifts.index') }}" class="block py-2 text-white font-semibold">Shifts &amp; Drawer</a>
                 <a href="{{ route('inventory.index') }}" class="block py-2 text-white font-semibold">Stock</a>
             @else
-                <a href="{{ route('dashboard') }}" class="block py-2 text-white font-semibold">Front Desk — Check In / Out</a>
-                <a href="{{ route('bookings.index') }}" class="block py-2 text-white font-semibold">Reservations</a>
-                <a href="{{ route('pos.index') }}" class="block py-2 text-white font-semibold">POS</a>
-                <a href="{{ route('kitchen.view') }}" class="block py-2 text-white font-semibold">Kitchen KDS</a>
-                <a href="{{ route('inventory.index') }}" class="block py-2 text-white font-semibold">Stock &amp; Recount</a>
-                <a href="{{ route('shifts.index') }}" class="block py-2 text-white font-semibold">Shifts &amp; Drawer</a>
-                <a href="{{ route('reports.index') }}" class="block py-2 text-white font-semibold">Weekly Sales &amp; Occupancy</a>
+                <a href="{{ route('dashboard') }}" class="block py-2 text-white font-semibold">Frontdesk</a>
+                <a href="{{ route('bookings.index') }}" class="block py-2 text-white font-semibold">Bookings</a>
+                <a href="{{ route('pos.index') }}" class="block py-2 text-white font-semibold">POS Catalog</a>
+                <a href="{{ route('admin.accounting.ledger') }}" class="block py-2 text-white font-semibold">Ledger</a>
+                <a href="{{ route('shifts.index') }}" class="block py-2 text-white font-semibold">Shift Settlement</a>
+                <a href="{{ route('reports.index') }}" class="block py-2 text-white font-semibold">Reports &amp; Audits</a>
+                <a href="{{ route('admin.pricing.index') }}" class="block py-2 text-white font-semibold">System Settings — Pricing</a>
+                <a href="{{ route('admin.users.index') }}" class="block py-2 text-white font-semibold">System Settings — Staff</a>
             @endif
         </nav>
     </header>
+
+    @if(auth()->check() && auth()->user()->hasAnyRole(['owner', 'admin', 'manager']))
+    <!-- Executive tab bar (owner/admin) -->
+    <nav class="owner-tabs sticky top-[49px] z-30 hidden md:block" aria-label="Executive">
+        <div class="flex items-center gap-1 px-3 py-2">
+            <a href="{{ route('dashboard') }}" class="exec-tab {{ request()->routeIs('dashboard', 'rooms.*', 'checkout.*', 'folios.*', 'checkin.*') ? 'active' : '' }}">
+                <span>▦</span> Frontdesk
+            </a>
+            <div class="relative" data-dropdown>
+                <button type="button" class="exec-tab" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
+                    <span>🔔</span> Notifications
+                    @isset($notifCount)
+                        @if(($notifCount ?? 0) > 0)
+                            <span class="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#EF4444] text-white text-[10px] font-black">{{ $notifCount }}</span>
+                        @endif
+                    @endisset
+                </button>
+                <div class="tab-menu nav-menu hidden absolute left-0 top-full mt-1 w-72 bg-white shadow-2xl z-[60] border border-slate-200 rounded-md overflow-hidden" role="menu">
+                    <div class="px-3 py-2 border-b border-slate-100 bg-slate-50 font-bold text-slate-700 text-xs">Attention needed</div>
+                    @isset($notifItems)
+                        @forelse($notifItems as $ni)
+                            <a href="{{ $ni['url'] }}" role="menuitem"><span class="font-black">{{ $ni['count'] }}</span> {{ $ni['label'] }}</a>
+                        @empty
+                            <div class="px-3 py-3 text-slate-400 text-xs">All clear — nothing pending.</div>
+                        @endisset
+                    @else
+                        <a href="{{ route('dashboard') }}" role="menuitem">Open Frontdesk board</a>
+                    @endisset
+                </div>
+            </div>
+            <a href="{{ route('bookings.index') }}" class="exec-tab {{ request()->routeIs('bookings.*') ? 'active' : '' }}">
+                <span>📅</span> Bookings
+            </a>
+            <a href="{{ route('pos.index') }}" class="exec-tab {{ request()->routeIs('pos.*') ? 'active' : '' }}">
+                <span>🛒</span> POS Catalog
+            </a>
+            <a href="{{ route('admin.accounting.ledger') }}" class="exec-tab {{ request()->routeIs('admin.accounting.ledger') ? 'active' : '' }}">
+                <span>📖</span> Ledger
+            </a>
+            <a href="{{ route('shifts.index') }}" class="exec-tab {{ request()->routeIs('shifts.*') ? 'active' : '' }}">
+                <span>💼</span> Shift Settlement
+            </a>
+            <div class="relative" data-dropdown>
+                <button type="button" class="exec-tab {{ request()->routeIs('reports.*', 'admin.accounting.*') ? 'active' : '' }}" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
+                    <span>📊</span> Reports &amp; Audits <span class="text-[9px]">▼</span>
+                </button>
+                <div class="tab-menu nav-menu hidden absolute left-0 top-full mt-1 w-64 bg-white shadow-2xl z-[60] border border-slate-200 rounded-md overflow-hidden" role="menu">
+                    <a href="{{ route('reports.index') }}" role="menuitem">Weekly Sales &amp; Occupancy</a>
+                    <a href="{{ route('admin.accounting.pnl') }}" role="menuitem">Executive P&amp;L</a>
+                    <a href="{{ route('admin.accounting.expenses') }}" role="menuitem">Expenses &amp; Petty Cash</a>
+                    <a href="{{ route('admin.accounting.shifts') }}" role="menuitem">Shift Reconciliations</a>
+                    <a href="{{ route('admin.accounting.losses') }}" role="menuitem">Loss Slips (FCE-######)</a>
+                </div>
+            </div>
+            <div class="ml-auto relative" data-dropdown>
+                <button type="button" class="exec-tab {{ request()->routeIs('admin.pricing.*', 'admin.users.*') ? 'active' : '' }}" aria-expanded="false" aria-haspopup="true" onclick="toggleNavDropdown(event)">
+                    <span>⚙</span> System Settings
+                </button>
+                <div class="tab-menu nav-menu hidden absolute right-0 top-full mt-1 w-60 bg-white shadow-2xl z-[60] border border-slate-200 rounded-md overflow-hidden" role="menu">
+                    <a href="{{ route('admin.pricing.index') }}" role="menuitem">Master Pricing Editor</a>
+                    <a href="{{ route('admin.users.index') }}" role="menuitem">Staff Accounts &amp; RBAC</a>
+                    <a href="{{ route('kitchen.view') }}" role="menuitem">Kitchen KDS</a>
+                    <a href="{{ route('kiosk.view') }}" target="_blank" role="menuitem">Lobby Display ↗</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    @endif
 
     <!-- Slim Page Header -->
     <div class="hms-sub-nav relative z-0 flex items-center justify-between gap-3">

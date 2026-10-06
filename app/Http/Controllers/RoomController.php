@@ -6,6 +6,7 @@ use App\Models\PosItem;
 use App\Models\Room;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class RoomController extends Controller
@@ -100,5 +101,53 @@ class RoomController extends Controller
         }
 
         return back()->with('error', 'No price update data received.');
+    }
+
+    /**
+     * Store a new POS Catalog Item (Admin / Owner).
+     */
+    public function storeItem(Request $request): RedirectResponse
+    {
+        abort_unless(auth()->user()->hasAnyRole(['admin', 'owner']), 403, 'Unauthorized.');
+
+        $validated = $request->validate([
+            'name'              => 'required|string|max:120|unique:pos_items,name',
+            'category'          => 'required|string|max:60',
+            'price'             => 'required|numeric|min:0',
+            'is_tracked'        => 'nullable|boolean',
+            'stock_quantity'    => 'nullable|integer|min:0',
+            'reorder_level'     => 'nullable|integer|min:0',
+            'kitchen_hours_only'=> 'nullable|boolean',
+            'is_available'      => 'nullable|boolean',
+        ]);
+
+        $maxSort = PosItem::where('category', $validated['category'])->max('sort_order') ?? 0;
+
+        PosItem::create([
+            'name'               => trim($validated['name']),
+            'category'           => trim($validated['category']),
+            'price'              => $validated['price'],
+            'is_tracked'         => $request->boolean('is_tracked', false),
+            'stock_quantity'     => $request->boolean('is_tracked') ? (int)($validated['stock_quantity'] ?? 0) : 0,
+            'reorder_level'      => (int)($validated['reorder_level'] ?? 5),
+            'kitchen_hours_only' => $request->boolean('kitchen_hours_only', false),
+            'is_available'       => $request->boolean('is_available', true),
+            'sort_order'         => $maxSort + 1,
+        ]);
+
+        return back()->with('success', "New catalog item \u201c{$validated['name']}\u201d added successfully.");
+    }
+
+    /**
+     * Delete a POS Catalog Item (Admin / Owner).
+     */
+    public function destroyItem(PosItem $posItem): RedirectResponse
+    {
+        abort_unless(auth()->user()->hasAnyRole(['admin', 'owner']), 403, 'Unauthorized.');
+
+        $name = $posItem->name;
+        $posItem->delete();
+
+        return back()->with('success', "Catalog item \u201c{$name}\u201d has been removed.");
     }
 }
