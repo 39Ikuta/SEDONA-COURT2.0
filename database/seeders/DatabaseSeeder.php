@@ -287,8 +287,5 @@ class DatabaseSeeder extends Seeder
         foreach ($catalog as $item) {
             PosItem::updateOrCreate(['name' => $item['name']], $item);
         }
-
-        // Synchronize all breakfast meals with master egg stock
-        app(\App\Services\InventoryService::class)->syncBreakfastItemsStockWithEgg();
     }
 }

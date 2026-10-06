@@ -125,10 +125,10 @@
                                     <span class="font-mono font-black text-sm px-2 py-0.5 rounded {{ $isOut ? 'bg-rose-600 text-white' : ($isLow ? 'bg-amber-100 text-amber-900 font-bold border border-amber-300' : 'bg-emerald-50 text-emerald-800') }}">
                                         {{ $item->stock_quantity }}
                                     </span>
-                                    @if($item->isBreakfastItem())
-                                        <span class="block text-[9px] text-amber-700 font-bold mt-0.5">Shared w/ Egg</span>
+                                    @if($item->requiresEgg())
+                                        <span class="block text-[9px] text-amber-700 font-bold mt-0.5">🍳 Uses Egg</span>
                                     @elseif($item->isEggItem())
-                                        <span class="block text-[9px] text-emerald-700 font-bold mt-0.5">Master Egg Pool</span>
+                                        <span class="block text-[9px] text-emerald-700 font-bold mt-0.5">🥚 Egg Inventory</span>
                                     @endif
                                 @else
                                     <span class="text-slate-400 font-mono">—</span>
@@ -298,10 +298,10 @@
                             <tr>
                                 <td class="p-2 font-bold text-slate-800">
                                     {{ $it->name }}
-                                    @if($it->isBreakfastItem())
-                                        <span class="text-[10px] text-amber-600 font-semibold block">(Shared w/ Egg)</span>
+                                    @if($it->requiresEgg())
+                                        <span class="text-[10px] text-amber-600 font-semibold block">(Uses 1 Egg)</span>
                                     @elseif($it->isEggItem())
-                                        <span class="text-[10px] text-emerald-600 font-semibold block">(Master Egg Pool)</span>
+                                        <span class="text-[10px] text-emerald-600 font-semibold block">(Egg Pantry Stock)</span>
                                     @endif
                                 </td>
                                 <td class="p-2 uppercase text-[10px] text-slate-500">{{ str_replace('_', ' ', $it->category) }}</td>

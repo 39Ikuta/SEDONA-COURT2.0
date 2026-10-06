@@ -37,14 +37,16 @@ class PosItem extends Model
     public function isEggItem(): bool
     {
         $name = strtolower(trim($this->name ?? ''));
-        return $name === 'egg (fried/boiled)' 
-            || $name === 'egg' 
+        return $name === 'egg (fried/boiled)'
+            || $name === 'egg'
             || str_starts_with($name, 'egg (')
             || (str_contains($name, 'egg') && strtolower(trim($this->category ?? '')) === 'kitchen extras');
     }
 
     /**
-     * Determine if this item is an egg-limited breakfast meal (Silog or Breakfast category).
+     * Determine if this item is a breakfast meal (Silog or Breakfast category).
+     * Each breakfast item now has its OWN independent stock (not pooled with egg).
+     * However, ordering one still triggers a relational egg deduction via requiresEgg().
      */
     public function isBreakfastItem(): bool
     {
@@ -59,15 +61,46 @@ class PosItem extends Model
     }
 
     /**
-     * Retrieve the master egg item used for breakfast pooling.
+     * Determine if ordering this dish also deducts from the raw egg pantry stock.
+     * Covers: all silog/breakfast meals, Calamares (egg batter), Sizzling Sisig w/ Egg.
+     */
+    public function requiresEgg(): bool
+    {
+        if ($this->isEggItem()) {
+            return false;
+        }
+
+        $name = strtolower(trim($this->name ?? ''));
+
+        if (str_contains($name, 'silog') || strtolower(trim($this->category ?? '')) === 'breakfast') {
+            return true;
+        }
+
+        if (str_contains($name, 'w/ egg') || str_contains($name, 'w/egg') || str_contains($name, 'with egg')) {
+            return true;
+        }
+
+        if (str_contains($name, 'calamares')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Number of raw eggs consumed per serving of this dish (default: 1).
+     */
+    public function getEggRequirementQty(): int
+    {
+        return 1;
+    }
+
+    /**
+     * Retrieve the master egg item used for relational deductions.
      */
     public static function getMasterEggItem(): ?self
     {
-        if (static::$cachedEgg !== null && static::$cachedEgg->exists) {
-            return static::$cachedEgg;
-        }
-
-        return static::$cachedEgg = static::where('name', 'Egg (Fried/Boiled)')
+        return static::where('name', 'Egg (Fried/Boiled)')
             ->orWhere('name', 'like', '%Egg (Fried/Boiled)%')
             ->orWhere(function ($q) {
                 $q->where('name', 'like', '%Egg%')->where('category', 'Kitchen Extras');
@@ -84,28 +117,17 @@ class PosItem extends Model
     }
 
     /**
-     * Dynamically resolve stock quantity.
-     * All breakfast meals share the exact same inventory pool as Egg (Fried/Boiled).
+     * Dynamically resolve item availability.
+     * For egg-dependent dishes: unavailable if the dish itself is out OR eggs are exhausted.
+     * Each dish has its own is_available flag independent of other dishes.
      */
-    public function getStockQuantityAttribute($value)
+    public function getIsAvailableAttribute($value): bool
     {
-        if ($this->isBreakfastItem()) {
-            $egg = static::getMasterEggItem();
-            if ($egg && $egg->id !== $this->id) {
-                return (int) $egg->getRawOriginal('stock_quantity', $value);
-            }
+        if (!(bool) $value) {
+            return false;
         }
 
-        return $value !== null ? (int) $value : 0;
-    }
-
-    /**
-     * Dynamically resolve item availability.
-     * If eggs are exhausted (stock <= 0) or unavailable, all breakfast items are unavailable.
-     */
-    public function getIsAvailableAttribute($value)
-    {
-        if ($this->isBreakfastItem()) {
+        if ($this->requiresEgg()) {
             $egg = static::getMasterEggItem();
             if ($egg && $egg->id !== $this->id) {
                 $eggStock = (int) $egg->getRawOriginal('stock_quantity', 0);
@@ -116,7 +138,7 @@ class PosItem extends Model
             }
         }
 
-        return (bool) $value;
+        return true;
     }
 
     /**
@@ -128,7 +150,7 @@ class PosItem extends Model
         if (!$this->kitchen_hours_only) return true;
 
         $hour = (int) now()->format('G');
-        return $hour >= 6 && $hour < 22; // 6:00 AM – 10:00 PM
+        return $hour >= 6 && $hour < 22;
     }
 
     public function scopeAvailable($query)
@@ -141,4 +163,3 @@ class PosItem extends Model
         return $query->where('category', $category);
     }
 }
-

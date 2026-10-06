@@ -188,9 +188,9 @@
                     @foreach($posItems as $pi)
                         @php
                             $stock = $pi->stock_quantity ?? 0;
-                            $isOut = $pi->is_tracked && ($stock <= 0);
-                            $badgeLabel = $pi->isBreakfastItem() ? "Egg Stock" : "Stock";
-                            $stockBadge = $pi->is_tracked ? " [{$badgeLabel}: {$stock}]" : "";
+                            $isOut = !$pi->is_available || ($pi->is_tracked && $stock <= 0);
+                            $eggNote = $pi->requiresEgg() ? " (Uses Egg)" : "";
+                            $stockBadge = $pi->is_tracked ? " [Stock: {$stock}{$eggNote}]" : "";
                         @endphp
                         <option value="{{ $pi->id }}" {{ $isOut ? 'disabled class=text-slate-400' : '' }}>
                             {{ $pi->category }}: {{ $pi->name }} (₱{{ number_format($pi->price, 2) }}){{ $stockBadge }}{{ $isOut ? ' - OUT OF STOCK' : '' }}

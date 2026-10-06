@@ -63,6 +63,20 @@ class PosController extends Controller
 
         $posItem = PosItem::findOrFail($validated['pos_item_id']);
         $qty = (int) $validated['quantity'];
+
+        if ($posItem->is_tracked && $posItem->stock_quantity < $qty) {
+            return back()->with('error', "Insufficient stock for {$posItem->name} (Only {$posItem->stock_quantity} available).");
+        }
+
+        if ($posItem->requiresEgg()) {
+            $egg = PosItem::getMasterEggItem();
+            $eggStock = $egg ? (int) $egg->stock_quantity : 0;
+            $requiredEggs = $posItem->getEggRequirementQty() * $qty;
+            if ($egg && $egg->is_tracked && $eggStock < $requiredEggs) {
+                return back()->with('error', "Insufficient egg stock in pantry (Dish requires {$requiredEggs} eggs, but only {$eggStock} available).");
+            }
+        }
+
         $subtotal = $posItem->price * $qty;
 
         $items = $folio->pos_items ?? [];
@@ -140,6 +154,31 @@ class PosController extends Controller
             if ($validated['order_type'] === 'room_charge') {
                 $room = Room::findOrFail($validated['room_id']);
                 $folio = $room->is_staff_quarters ? $room->getOrCreateStaffFolio() : $room->activeFolio;
+            }
+
+            // Pre-validation pass: Check individual item stocks and aggregate egg requirements
+            $eggItem = PosItem::getMasterEggItem();
+            $availableEggs = ($eggItem && $eggItem->is_tracked) ? (int) $eggItem->stock_quantity : PHP_INT_MAX;
+            $requiredEggs = 0;
+
+            foreach ($validated['items'] as $itemData) {
+                if (($itemData['qty'] ?? 0) <= 0) continue;
+                $checkItem = PosItem::findOrFail($itemData['id']);
+                $checkQty = (int) $itemData['qty'];
+
+                if ($checkItem->is_tracked && $checkItem->stock_quantity < $checkQty) {
+                    throw new \Exception("Insufficient stock for {$checkItem->name} (Only {$checkItem->stock_quantity} available, ordered {$checkQty}).");
+                }
+
+                if ($checkItem->isEggItem()) {
+                    $requiredEggs += $checkQty;
+                } elseif ($checkItem->requiresEgg()) {
+                    $requiredEggs += $checkItem->getEggRequirementQty() * $checkQty;
+                }
+            }
+
+            if ($eggItem && $eggItem->is_tracked && $requiredEggs > $availableEggs) {
+                throw new \Exception("Insufficient egg stock in kitchen pantry (Order requires {$requiredEggs} eggs, but only {$availableEggs} available).");
             }
 
             $orderNumber = 'ORD-' . strtoupper(uniqid());

@@ -76,34 +76,35 @@ class CheckoutSecurityAndDepositLedgerTest extends TestCase
     {
         $inventoryService = app(InventoryService::class);
         $inventoryService->setStockCount($this->eggItem->id, 100);
+        $this->tapsilog->update(['stock_quantity' => 50]);
         $this->calamares->update(['stock_quantity' => 15]);
         $this->sisigEgg->update(['stock_quantity' => 10]);
 
-        // Ordering 2x Tapsilog should decrement Tapsilog by 2 AND Egg by 2
-        // All breakfast items share the egg inventory pool, so both reflect 98
+        // Ordering 2x Tapsilog should decrement Tapsilog by 2 (50 -> 48) AND Egg by 2 (100 -> 98)
         $inventoryService->atomicDecrementStock($this->tapsilog->id, 2, 'sold', 'REF-001', $this->cashier->id);
 
-        $this->assertEquals(98, $this->tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(48, $this->tapsilog->fresh()->stock_quantity);
         $this->assertEquals(98, $this->eggItem->fresh()->stock_quantity);
 
-        // Ordering 3x Calamares should decrement Calamares by 3 AND Egg by 3
+        // Ordering 3x Calamares should decrement Calamares by 3 (15 -> 12) AND Egg by 3 (98 -> 95)
+        // Tapsilog stock remains independent at 48
         $inventoryService->atomicDecrementStock($this->calamares->id, 3, 'sold', 'REF-002', $this->cashier->id);
 
         $this->assertEquals(12, $this->calamares->fresh()->stock_quantity);
         $this->assertEquals(95, $this->eggItem->fresh()->stock_quantity);
-        $this->assertEquals(95, $this->tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(48, $this->tapsilog->fresh()->stock_quantity);
 
-        // Ordering 1x Sizzling Sisig w/ Egg should decrement Sisig by 1 AND Egg by 1
+        // Ordering 1x Sizzling Sisig w/ Egg should decrement Sisig by 1 (10 -> 9) AND Egg by 1 (95 -> 94)
         $inventoryService->atomicDecrementStock($this->sisigEgg->id, 1, 'sold', 'REF-003', $this->cashier->id);
 
         $this->assertEquals(9, $this->sisigEgg->fresh()->stock_quantity);
         $this->assertEquals(94, $this->eggItem->fresh()->stock_quantity);
-        $this->assertEquals(94, $this->tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(48, $this->tapsilog->fresh()->stock_quantity);
 
         // Ordering Egg directly should decrement Egg by 1 without duplicate/recursive deduction
         $inventoryService->atomicDecrementStock($this->eggItem->id, 1, 'sold', 'REF-004', $this->cashier->id);
         $this->assertEquals(93, $this->eggItem->fresh()->stock_quantity);
-        $this->assertEquals(93, $this->tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(48, $this->tapsilog->fresh()->stock_quantity);
 
         // Verify inventory events recorded
         $this->assertDatabaseHas('inventory_events', [
@@ -114,66 +115,60 @@ class CheckoutSecurityAndDepositLedgerTest extends TestCase
     }
 
     /**
-     * Test 1b: All breakfast items share the exact same inventory pool as the Egg.
+     * Test 1b: Each breakfast item has independent stock, plus relational egg deduction when ordered.
      */
-    public function test_all_breakfast_items_share_the_exact_same_inventory_as_the_egg(): void
+    public function test_all_breakfast_items_have_independent_stock_and_deduct_eggs(): void
     {
         $inventoryService = app(InventoryService::class);
 
         $egg = PosItem::where('name', 'Egg (Fried/Boiled)')->first();
-        $bangsilog = PosItem::firstOrCreate(['name' => 'Bangsilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
-        $porksilog = PosItem::firstOrCreate(['name' => 'Porksilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
-        $chicksilog = PosItem::firstOrCreate(['name' => 'Chicksilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
-        $tapsilog = PosItem::firstOrCreate(['name' => 'Tapsilog'], ['category' => 'Breakfast', 'price' => 160, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
-        $longsilog = PosItem::firstOrCreate(['name' => 'Longsilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
-        $hotsilog = PosItem::firstOrCreate(['name' => 'Hotsilog'], ['category' => 'Breakfast', 'price' => 130, 'stock_quantity' => 10, 'is_tracked' => true, 'is_available' => true]);
+        $bangsilog = PosItem::firstOrCreate(['name' => 'Bangsilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 15, 'is_tracked' => true, 'is_available' => true]);
+        $chicksilog = PosItem::firstOrCreate(['name' => 'Chicksilog'], ['category' => 'Breakfast', 'price' => 150, 'stock_quantity' => 20, 'is_tracked' => true, 'is_available' => true]);
+        $tapsilog = PosItem::firstOrCreate(['name' => 'Tapsilog'], ['category' => 'Breakfast', 'price' => 160, 'stock_quantity' => 25, 'is_tracked' => true, 'is_available' => true]);
 
         // Restock Egg to 40
         $inventoryService->setStockCount($egg->id, 40, 'restock');
+        $inventoryService->setStockCount($bangsilog->id, 15, 'restock');
+        $inventoryService->setStockCount($chicksilog->id, 20, 'restock');
+        $inventoryService->setStockCount($tapsilog->id, 25, 'restock');
 
         $this->assertEquals(40, $egg->fresh()->stock_quantity);
-        $this->assertEquals(40, $bangsilog->fresh()->stock_quantity);
-        $this->assertEquals(40, $porksilog->fresh()->stock_quantity);
-        $this->assertEquals(40, $chicksilog->fresh()->stock_quantity);
-        $this->assertEquals(40, $tapsilog->fresh()->stock_quantity);
-        $this->assertEquals(40, $longsilog->fresh()->stock_quantity);
-        $this->assertEquals(40, $hotsilog->fresh()->stock_quantity);
+        $this->assertEquals(15, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(20, $chicksilog->fresh()->stock_quantity);
+        $this->assertEquals(25, $tapsilog->fresh()->stock_quantity);
 
-        // Order 4x Bangsilog -> Egg stock becomes 36, all breakfast items become 36
+        // Order 4x Bangsilog -> Bangsilog stock becomes 11, Egg stock becomes 36. Chicksilog & Tapsilog untouched.
         $inventoryService->atomicDecrementStock($bangsilog->id, 4, 'sold', 'TEST-B01', $this->cashier->id);
 
         $this->assertEquals(36, $egg->fresh()->stock_quantity);
-        $this->assertEquals(36, $bangsilog->fresh()->stock_quantity);
-        $this->assertEquals(36, $porksilog->fresh()->stock_quantity);
-        $this->assertEquals(36, $chicksilog->fresh()->stock_quantity);
-        $this->assertEquals(36, $tapsilog->fresh()->stock_quantity);
-        $this->assertEquals(36, $longsilog->fresh()->stock_quantity);
-        $this->assertEquals(36, $hotsilog->fresh()->stock_quantity);
-
-        // Order 6x Tapsilog -> Egg stock becomes 30, all breakfast items become 30
-        $inventoryService->atomicDecrementStock($tapsilog->id, 6, 'sold', 'TEST-T01', $this->cashier->id);
-
-        $this->assertEquals(30, $egg->fresh()->stock_quantity);
-        $this->assertEquals(30, $bangsilog->fresh()->stock_quantity);
-        $this->assertEquals(30, $tapsilog->fresh()->stock_quantity);
-        $this->assertEquals(30, $hotsilog->fresh()->stock_quantity);
-
-        // Adjusting any breakfast item stock in /inventory also updates the Master Egg and all other breakfast items
-        $inventoryService->setStockCount($tapsilog->id, 25, 'adjustment');
-
-        $this->assertEquals(25, $egg->fresh()->stock_quantity);
-        $this->assertEquals(25, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(11, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(20, $chicksilog->fresh()->stock_quantity);
         $this->assertEquals(25, $tapsilog->fresh()->stock_quantity);
 
-        // Zero out egg stock -> all breakfast items become Out of Stock (is_available = false)
+        // Order 5x Chicksilog -> Chicksilog stock becomes 15, Egg stock becomes 31. Bangsilog untouched.
+        $inventoryService->atomicDecrementStock($chicksilog->id, 5, 'sold', 'TEST-C01', $this->cashier->id);
+
+        $this->assertEquals(31, $egg->fresh()->stock_quantity);
+        $this->assertEquals(11, $bangsilog->fresh()->stock_quantity);
+        $this->assertEquals(15, $chicksilog->fresh()->stock_quantity);
+        $this->assertEquals(25, $tapsilog->fresh()->stock_quantity);
+
+        // Adjusting Tapsilog stock via setStockCount operates independently
+        $inventoryService->setStockCount($tapsilog->id, 30, 'adjustment');
+
+        $this->assertEquals(30, $tapsilog->fresh()->stock_quantity);
+        $this->assertEquals(31, $egg->fresh()->stock_quantity);
+        $this->assertEquals(15, $chicksilog->fresh()->stock_quantity);
+
+        // Zero out egg stock -> all breakfast items dynamically become unavailable because eggs are exhausted
         $inventoryService->setStockCount($egg->id, 0, 'adjustment');
 
         $this->assertEquals(0, $egg->fresh()->stock_quantity);
         $this->assertFalse((bool) $egg->fresh()->is_available);
-        $this->assertEquals(0, $bangsilog->fresh()->stock_quantity);
-        $this->assertFalse((bool) $bangsilog->fresh()->is_available);
-        $this->assertEquals(0, $tapsilog->fresh()->stock_quantity);
-        $this->assertFalse((bool) $tapsilog->fresh()->is_available);
+        $this->assertEquals(11, $bangsilog->fresh()->stock_quantity);
+        $this->assertFalse((bool) $bangsilog->fresh()->is_available); // Dynamic egg exhaustion check
+        $this->assertEquals(15, $chicksilog->fresh()->stock_quantity);
+        $this->assertFalse((bool) $chicksilog->fresh()->is_available);
     }
 
     /**

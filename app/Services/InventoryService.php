@@ -10,37 +10,12 @@ use Illuminate\Support\Facades\DB;
 class InventoryService
 {
     /**
-     * Synchronize all breakfast items with the master egg stock.
-     * In Sedona PMS, all breakfast meals share the exact same inventory pool as Egg (Fried/Boiled).
-     */
-    public function syncBreakfastItemsStockWithEgg(?PosItem $eggItem = null): void
-    {
-        PosItem::clearEggCache();
-        $egg = $eggItem ?? PosItem::getMasterEggItem();
-        if (!$egg) {
-            return;
-        }
-
-        $stock = (int) ($egg->getRawOriginal('stock_quantity') ?? 0);
-        $isAvailable = $stock > 0 && (bool) $egg->getRawOriginal('is_available', true);
-
-        // Update all items where category is 'Breakfast' or name contains 'silog' (excluding the egg itself)
-        PosItem::where('id', '!=', $egg->id)
-            ->where(function ($q) {
-                $q->where('category', 'Breakfast')
-                  ->orWhere('name', 'like', '%silog%');
-            })
-            ->update([
-                'stock_quantity' => $stock,
-                'is_available'   => $isAvailable,
-            ]);
-
-        PosItem::clearEggCache();
-    }
-
-    /**
      * Atomically decrement stock for a tracked POS item.
-     * Auto-toggles item availability to false when stock hits zero.
+     *
+     * NEW BEHAVIOUR (Independent Stock Model):
+     * - Each dish has its own stock_quantity. Breakfast items (silog) are NO longer pooled.
+     * - Dishes that requiresEgg() trigger an ADDITIONAL relational deduction from Egg (Fried/Boiled).
+     * - Auto-toggles item availability to false when stock hits zero.
      */
     public function atomicDecrementStock(
         int $posItemId,
@@ -58,90 +33,7 @@ class InventoryService
 
             $user = $userId ? \App\Models\User::find($userId) : Auth::user();
 
-            // Case 1: Item is a Breakfast Item (shares the exact same inventory pool as Egg)
-            if ($item->isBreakfastItem()) {
-                $eggItem = PosItem::where('name', 'Egg (Fried/Boiled)')
-                    ->orWhere('name', 'like', '%Egg (Fried/Boiled)%')
-                    ->orWhere(function ($q) {
-                        $q->where('name', 'like', '%Egg%')->where('category', 'Kitchen Extras');
-                    })
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($eggItem && $eggItem->is_tracked) {
-                    $eggStock = (int) ($eggItem->getRawOriginal('stock_quantity') ?? 0);
-                    $newEggStock = max(0, $eggStock - $qty);
-
-                    $eggItem->stock_quantity = $newEggStock;
-                    $eggItem->is_available = $newEggStock > 0;
-                    $eggItem->save();
-
-                    // Log recipe ingredient deduction on egg
-                    InventoryEvent::create([
-                        'pos_item_id'     => $eggItem->id,
-                        'item_name'       => $eggItem->name,
-                        'event_type'      => 'recipe_ingredient',
-                        'quantity_change' => -$qty,
-                        'balance_after'   => $newEggStock,
-                        'reference_id'    => $referenceId,
-                        'user_id'         => $user?->id,
-                        'operator_name'   => $user?->name ?? 'Kitchen Recipe System',
-                        'notes'           => "Shared breakfast egg deduction: {$qty}x egg used for {$qty}x {$item->name}" . ($notes ? " ({$notes})" : ""),
-                    ]);
-
-                    // Sync ordered item
-                    $item->stock_quantity = $newEggStock;
-                    $item->is_available = $newEggStock > 0;
-                    $item->save();
-
-                    // Log sold event on breakfast item
-                    InventoryEvent::create([
-                        'pos_item_id'     => $item->id,
-                        'item_name'       => $item->name,
-                        'event_type'      => $reason,
-                        'quantity_change' => -$qty,
-                        'balance_after'   => $newEggStock,
-                        'reference_id'    => $referenceId,
-                        'user_id'         => $user?->id,
-                        'operator_name'   => $user?->name ?? 'System Cashier',
-                        'notes'           => $notes ?? "Stock decreased by {$qty} via {$reason} (shared egg inventory)",
-                    ]);
-
-                    // Synchronize ALL other breakfast items
-                    $this->syncBreakfastItemsStockWithEgg($eggItem);
-
-                    return true;
-                }
-            }
-
-            // Case 2: Master Egg Item ordered directly
-            if ($item->isEggItem()) {
-                $currentStock = (int) ($item->getRawOriginal('stock_quantity') ?? 0);
-                $newStock = max(0, $currentStock - $qty);
-
-                $item->stock_quantity = $newStock;
-                $item->is_available = $newStock > 0;
-                $item->save();
-
-                InventoryEvent::create([
-                    'pos_item_id'     => $item->id,
-                    'item_name'       => $item->name,
-                    'event_type'      => $reason,
-                    'quantity_change' => -$qty,
-                    'balance_after'   => $newStock,
-                    'reference_id'    => $referenceId,
-                    'user_id'         => $user?->id,
-                    'operator_name'   => $user?->name ?? 'System Cashier',
-                    'notes'           => $notes ?? "Stock decreased by {$qty} via {$reason}",
-                ]);
-
-                // Synchronize all breakfast items
-                $this->syncBreakfastItemsStockWithEgg($item);
-
-                return true;
-            }
-
-            // Case 3: Standard item or non-breakfast egg-dependent item (e.g. Calamares, Sisig w/ Egg)
+            // --- Step 1: Deduct from the dish's OWN stock ---
             $currentStock = (int) ($item->getRawOriginal('stock_quantity') ?? 0);
             $newStock = max(0, $currentStock - $qty);
 
@@ -161,12 +53,10 @@ class InventoryService
                 'notes'           => $notes ?? "Stock decreased by {$qty} via {$reason}",
             ]);
 
-            // If this non-breakfast item consumes egg (Calamares, Sisig w/ Egg):
-            if (self::requiresEggDeduction($item->name)) {
-                $eggItem = $this->deductRelationalEggStock($item, $qty, $referenceId, $user?->id, $notes);
-                if ($eggItem) {
-                    $this->syncBreakfastItemsStockWithEgg($eggItem);
-                }
+            // --- Step 2: If the dish uses eggs, also deduct from Egg pantry relationally ---
+            if ($item->requiresEgg()) {
+                $eggQty = $item->getEggRequirementQty() * $qty;
+                $this->deductRelationalEggStock($item, $eggQty, $referenceId, $user?->id, $notes);
             }
 
             return true;
@@ -174,43 +64,12 @@ class InventoryService
     }
 
     /**
-     * Check if a dish requires relational deduction of egg inventory.
-     * Matches dishes containing 'silog', 'w/ egg', or 'calamares' (case-insensitive),
-     * while excluding the egg item itself.
-     */
-    public static function requiresEggDeduction(string $itemName): bool
-    {
-        $name = strtolower(trim($itemName));
-
-        // Avoid infinite loop or self-deduction if the ordered item is the egg itself
-        if ($name === 'egg (fried/boiled)' || $name === 'egg' || str_starts_with($name, 'egg (')) {
-            return false;
-        }
-
-        // 1. Matches silog (e.g. Bangsilog, Porksilog, Chicksilog, Tapsilog, Longsilog, Hotsilog)
-        if (str_contains($name, 'silog')) {
-            return true;
-        }
-
-        // 2. Matches 'w/ egg' or 'with egg' (e.g. Sizzling Sisig w/ Egg)
-        if (str_contains($name, 'w/ egg') || str_contains($name, 'w/egg') || str_contains($name, 'with egg')) {
-            return true;
-        }
-
-        // 3. Matches 'calamares' (e.g. Calamares)
-        if (str_contains($name, 'calamares')) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Deduct egg stock relationally (1 egg per unit) for composite dishes.
+     * Deduct egg stock relationally for composite/egg-dependent dishes.
+     * Logs a "recipe_ingredient" event on the egg item.
      */
     public function deductRelationalEggStock(
         PosItem $dishItem,
-        int $qty,
+        int $eggQty,
         ?string $referenceId = null,
         ?int $userId = null,
         ?string $notes = null
@@ -228,7 +87,7 @@ class InventoryService
         }
 
         $currentStock = (int) ($eggItem->getRawOriginal('stock_quantity') ?? 0);
-        $newStock = max(0, $currentStock - $qty);
+        $newStock = max(0, $currentStock - $eggQty);
 
         $eggItem->stock_quantity = $newStock;
         $eggItem->is_available = $newStock > 0;
@@ -240,21 +99,22 @@ class InventoryService
             'pos_item_id'     => $eggItem->id,
             'item_name'       => $eggItem->name,
             'event_type'      => 'recipe_ingredient',
-            'quantity_change' => -$qty,
+            'quantity_change' => -$eggQty,
             'balance_after'   => $newStock,
             'reference_id'    => $referenceId,
             'user_id'         => $user?->id,
             'operator_name'   => $user?->name ?? 'Kitchen Recipe System',
-            'notes'           => "Recipe ingredient deduction: {$qty}x egg used for {$qty}x {$dishItem->name}" . ($notes ? " ({$notes})" : ""),
+            'notes'           => "Recipe ingredient: {$eggQty}x egg used for order of {$dishItem->name}" . ($notes ? " ({$notes})" : ""),
         ]);
 
-        $this->syncBreakfastItemsStockWithEgg($eggItem);
+        PosItem::clearEggCache();
 
         return $eggItem;
     }
 
     /**
      * Set exact stock count for a single item (manual adjustment or restock).
+     * Each item manages its own stock independently.
      */
     public function setStockCount(
         int $posItemId,
@@ -266,34 +126,6 @@ class InventoryService
         return DB::transaction(function () use ($posItemId, $newCount, $reason, $notes, $userId) {
             $item = PosItem::where('id', $posItemId)->lockForUpdate()->firstOrFail();
             $user = $userId ? \App\Models\User::find($userId) : Auth::user();
-
-            // If adjusting a breakfast item, synchronize it with the Master Egg
-            if ($item->isBreakfastItem()) {
-                $eggItem = PosItem::getMasterEggItem();
-                if ($eggItem) {
-                    $eggItem = PosItem::where('id', $eggItem->id)->lockForUpdate()->first();
-                    $prevEggStock = (int) ($eggItem->getRawOriginal('stock_quantity') ?? 0);
-                    $diff = $newCount - $prevEggStock;
-
-                    $eggItem->stock_quantity = max(0, $newCount);
-                    $eggItem->is_available = $newCount > 0;
-                    $eggItem->save();
-
-                    InventoryEvent::create([
-                        'pos_item_id'     => $eggItem->id,
-                        'item_name'       => $eggItem->name,
-                        'event_type'      => $reason,
-                        'quantity_change' => $diff,
-                        'balance_after'   => $eggItem->stock_quantity,
-                        'user_id'         => $user?->id,
-                        'operator_name'   => $user?->name ?? 'Duty Operator',
-                        'notes'           => $notes ?? "Egg stock adjusted to {$newCount} via {$item->name} ({$reason})",
-                    ]);
-
-                    $this->syncBreakfastItemsStockWithEgg($eggItem);
-                    return $item->fresh();
-                }
-            }
 
             $prevStock = (int) ($item->getRawOriginal('stock_quantity') ?? 0);
             $diff = $newCount - $prevStock;
@@ -313,10 +145,7 @@ class InventoryService
                 'notes'           => $notes ?? "Stock set from {$prevStock} to {$newCount} ({$reason})",
             ]);
 
-            // If master egg was adjusted, synchronize all breakfast items
-            if ($item->isEggItem()) {
-                $this->syncBreakfastItemsStockWithEgg($item);
-            }
+            PosItem::clearEggCache();
 
             return $item;
         });
@@ -324,6 +153,7 @@ class InventoryService
 
     /**
      * Batch recount all items (Cashier Shift Inventory Recount).
+     * Each item is independently updated — no pooling sync required.
      */
     public function batchRecount(array $counts, ?int $userId = null, ?string $notes = null): int
     {
@@ -335,8 +165,6 @@ class InventoryService
             $this->setStockCount((int) $itemId, (int) $count, 'recount', $notes, $userId);
             $updatedCount++;
         }
-
-        $this->syncBreakfastItemsStockWithEgg();
 
         return $updatedCount;
     }
@@ -374,5 +202,16 @@ class InventoryService
         fclose($output);
 
         return $csv;
+    }
+
+    /**
+     * Legacy helper kept for backwards compat — no longer pools breakfast stock.
+     * Now only clears the egg cache to ensure fresh reads.
+     *
+     * @deprecated Use deductRelationalEggStock() directly.
+     */
+    public function syncBreakfastItemsStockWithEgg(?PosItem $eggItem = null): void
+    {
+        PosItem::clearEggCache();
     }
 }

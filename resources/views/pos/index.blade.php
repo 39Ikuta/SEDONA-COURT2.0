@@ -55,8 +55,8 @@
                                     </span>
                                     <div class="flex items-center space-x-1">
                                         @if($item->is_tracked)
-                                            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold {{ $isOut ? 'bg-rose-100 text-rose-800 border border-rose-300' : ($isLow ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300') }}" title="{{ $item->isBreakfastItem() ? 'Shared Egg Stock' : 'Stock on hand' }}">
-                                                {{ $item->isBreakfastItem() ? 'Egg Stock: ' : 'Stock: ' }}{{ $stock }}
+                                            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold {{ $isOut ? 'bg-rose-100 text-rose-800 border border-rose-300' : ($isLow ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300') }}" title="{{ $item->isBreakfastItem() ? 'Dish stock + egg dependency' : 'Stock on hand' }}">
+                                                Stock: {{ $stock }}
                                             </span>
                                         @endif
                                         @if($item->kitchen_hours_only)
