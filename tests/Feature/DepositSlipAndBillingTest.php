@@ -110,4 +110,26 @@ class DepositSlipAndBillingTest extends TestCase
         $response->assertSee('Cash Tendered:');
         $response->assertSee('Change Due to Guest:');
     }
+
+    public function test_checkin_store_records_exact_manila_time_and_supports_custom_checkin_time(): void
+    {
+        $cashier = User::where('email', 'pau@sedonapms.com')->first() ?? User::first();
+        $room = Room::where('number', '5')->first();
+
+        // Check in with custom time
+        $customTime = now()->subMinutes(45)->format('Y-m-d\TH:i');
+        $resp = $this->actingAs($cashier)->post(route('checkin.store'), [
+            'room_id' => $room->id,
+            'guest_name' => 'Custom Time Guest',
+            'headcount' => 2,
+            'rate_tier' => '3h',
+            'checked_in_at' => $customTime,
+        ]);
+
+        $resp->assertRedirect(route('dashboard'));
+        $folio = Folio::where('room_id', $room->id)->where('status', 'active')->first();
+        $this->assertNotNull($folio);
+        $this->assertEquals(\Carbon\Carbon::parse($customTime)->format('Y-m-d H:i'), $folio->checked_in_at->format('Y-m-d H:i'));
+        $this->assertEquals(\Carbon\Carbon::parse($customTime)->addHours(3)->format('Y-m-d H:i'), $folio->expected_checkout_at->format('Y-m-d H:i'));
+    }
 }

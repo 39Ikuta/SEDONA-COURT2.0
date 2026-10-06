@@ -21,19 +21,24 @@
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Stay Duration Tier:</label>
-                    <select name="rate_tier" id="checkInTierSelect" onchange="updateCheckInRatePreview()" class="form-control-hms font-bold">
-                        <option value="3h">3 Hours Stay</option>
-                        <option value="6h">6 Hours Stay</option>
-                        <option value="12h" selected>12 Hours Stay</option>
-                        <option value="24h">24 Hours Stay</option>
-                        <option value="promo">Midnight Promo (8pm-6am)</option>
-                    </select>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Check-in Date & Time:</label>
+                    <input type="datetime-local" name="checked_in_at" id="checkInDateTime" class="form-control-hms font-mono text-[11px] font-bold" title="Click to adjust check-in date and time">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">No. of Guest (Pax):</label>
                     <input type="number" name="headcount" value="2" min="1" max="8" class="form-control-hms font-bold">
                 </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Stay Duration Tier:</label>
+                <select name="rate_tier" id="checkInTierSelect" onchange="updateCheckInRatePreview()" class="form-control-hms font-bold">
+                    <option value="3h">3 Hours Stay</option>
+                    <option value="6h">6 Hours Stay</option>
+                    <option value="12h" selected>12 Hours Stay</option>
+                    <option value="24h">24 Hours Stay</option>
+                    <option value="promo">Midnight Promo (8pm-6am)</option>
+                </select>
             </div>
 
             <div class="bg-slate-50 p-2.5 border border-slate-200 text-xs flex items-center justify-between">
@@ -243,6 +248,11 @@
     function openCheckInModal(roomId, roomNumber, roomType, r3, r12, r24, rpromo) {
         document.getElementById('checkInRoomId').value = roomId;
         document.getElementById('checkInModalTitle').textContent = `Check In Room ${roomNumber} (${roomType})`;
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const localIso = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        const dtInput = document.getElementById('checkInDateTime');
+        if (dtInput) dtInput.value = localIso;
         currentRoomRates = { '3h': r3, '6h': r3 * 2, '12h': r12, '24h': r24, 'promo': rpromo };
         updateCheckInRatePreview();
         document.getElementById('checkInModal').classList.remove('hidden');

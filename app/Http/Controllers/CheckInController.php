@@ -31,6 +31,7 @@ class CheckInController extends Controller
             'is_senior' => 'nullable|boolean',
             'is_pwd' => 'nullable|boolean',
             'booking_id' => 'nullable|exists:bookings,id',
+            'checked_in_at' => 'nullable|date',
         ]);
 
         $room = Room::findOrFail($validated['room_id']);
@@ -52,8 +53,8 @@ class CheckInController extends Controller
             ]);
 
             $hours = $room->getTierHours($validated['rate_tier']);
-            $checkedInAt = now();
-            $expectedCheckoutAt = now()->addHours($hours);
+            $checkedInAt = !empty($validated['checked_in_at']) ? \Carbon\Carbon::parse($validated['checked_in_at']) : now();
+            $expectedCheckoutAt = $checkedInAt->copy()->addHours($hours);
             $roomRate = $room->getRateForTier($validated['rate_tier']);
 
             $hasDiscount = $guest->isEligibleForDiscount();
