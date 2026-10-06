@@ -37,19 +37,20 @@
 
                     <div class="flex items-center">
                         <label class="w-32 font-bold text-slate-700 text-[11px]">CHECK IN TIME:</label>
-                        <input type="datetime-local" 
-                               name="checked_in_at" 
-                               id="inpCheckInTime" 
-                               value="{{ $checkInTime->format('Y-m-d\TH:i') }}" 
-                               onchange="onCheckInTimeChange(this.value)" 
-                               class="form-control-hms !text-left text-[11px] font-mono font-bold bg-white text-slate-900 border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-inner cursor-pointer" 
-                               title="Cashier: Click to edit guest check-in date and time">
+                        <input type="text" 
+                               value="{{ $checkInTime->format('m/d/Y h:i A') }}" 
+                               readonly 
+                               tabindex="-1" 
+                               style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" 
+                               class="form-control-hms !text-left text-[11px] font-mono font-bold text-slate-800"
+                               title="Guest check-in time recorded in system">
+                        <input type="hidden" name="checked_in_at" id="inpCheckInTime" value="{{ $checkInTime->format('Y-m-d\TH:i') }}">
                     </div>
 
                     <div class="flex items-center">
                         <label class="w-32 font-bold text-slate-700 text-[11px]">BASE ROOM RATE:</label>
-                        <div class="relative inline-flex items-center w-full">
-                            <span class="absolute left-2.5 text-slate-500 font-bold font-mono text-xs pointer-events-none select-none">₱</span>
+                        <div class="flex items-center w-full">
+                            <span class="px-2 py-1 bg-slate-100 border border-r-0 border-slate-300 text-slate-600 font-bold font-mono text-xs select-none">₱</span>
                             <input type="number" 
                                    step="0.01" 
                                    min="0" 
@@ -57,7 +58,7 @@
                                    id="inpRoomRate" 
                                    value="{{ number_format($roomRate, 2, '.', '') }}" 
                                    oninput="onRoomRateChange(this.value)" 
-                                   class="form-control-hms font-mono font-bold text-slate-900 !w-full pl-7 text-left bg-white border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-inner" 
+                                   class="form-control-hms font-mono font-bold text-slate-900 !w-full text-left bg-white border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-inner" 
                                    title="Cashier: Edit room base rate">
                         </div>
                     </div>
