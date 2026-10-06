@@ -22,7 +22,18 @@
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Check-in Date & Time:</label>
-                    <input type="datetime-local" name="checked_in_at" id="checkInDateTime" class="form-control-hms font-mono text-[11px] font-bold" title="Click to adjust check-in date and time">
+                    <div class="relative">
+                        <input type="text" 
+                               id="checkInDateTimeDisplay" 
+                               readonly 
+                               tabindex="-1" 
+                               style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" 
+                               class="form-control-hms font-mono text-[11px] font-bold text-slate-800 pr-12 cursor-not-allowed select-none" 
+                               value="{{ now()->format('m/d/Y h:i:s A') }}"
+                               title="Check-in date & time is locked to system live clock">
+                        <span class="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] uppercase px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-sans font-bold select-none pointer-events-none">Live</span>
+                    </div>
+                    <input type="hidden" name="checked_in_at" id="checkInDateTime" value="{{ now()->toIso8601String() }}">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">No. of Guest (Pax):</label>
@@ -245,14 +256,31 @@
 <script>
     let currentRoomRates = {};
 
+    let checkInClockInterval = null;
+
+    function syncCheckInLiveTime() {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const localIso = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        const dtInput = document.getElementById('checkInDateTime');
+        if (dtInput) dtInput.value = localIso;
+
+        const displayEl = document.getElementById('checkInDateTimeDisplay');
+        if (displayEl) {
+            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            const dateStr = now.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+            displayEl.value = `${dateStr} ${timeStr}`;
+        }
+    }
+
     function openCheckInModal(roomId, roomNumber, roomType, r3, r12, r24, rpromo) {
         document.getElementById('checkInRoomId').value = roomId;
         document.getElementById('checkInModalTitle').textContent = `Check In Room ${roomNumber} (${roomType})`;
-        const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const localIso = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-        const dtInput = document.getElementById('checkInDateTime');
-        if (dtInput) dtInput.value = localIso;
+        
+        syncCheckInLiveTime();
+        if (checkInClockInterval) clearInterval(checkInClockInterval);
+        checkInClockInterval = setInterval(syncCheckInLiveTime, 1000);
+
         currentRoomRates = { '3h': r3, '6h': r3 * 2, '12h': r12, '24h': r24, 'promo': rpromo };
         updateCheckInRatePreview();
         document.getElementById('checkInModal').classList.remove('hidden');
@@ -263,6 +291,10 @@
         document.getElementById('checkInRatePreview').textContent = `₱${rate.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
     }
     function closeCheckInModal() {
+        if (checkInClockInterval) {
+            clearInterval(checkInClockInterval);
+            checkInClockInterval = null;
+        }
         document.getElementById('checkInModal').classList.add('hidden');
     }
 
