@@ -21,18 +21,21 @@
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Check-in Date & Time:</label>
-                    <div class="relative">
-                        <input type="text" 
-                               id="checkInDateTimeDisplay" 
-                               readonly 
-                               tabindex="-1" 
-                               style="pointer-events: none; background-color: #f1f5f9; user-select: none; border-color: #cbd5e1;" 
-                               class="form-control-hms font-mono text-[11px] font-bold text-slate-800 pr-12 cursor-not-allowed select-none" 
-                               value="{{ now()->format('m/d/Y h:i:s A') }}"
-                               title="Check-in date & time is locked to system live clock">
-                        <span class="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] uppercase px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-sans font-bold select-none pointer-events-none">Live</span>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-bold text-slate-700">Check-in Date & Time:</label>
+                        <span class="text-[9px] uppercase font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Live
+                        </span>
                     </div>
+                    <input type="text" 
+                           id="checkInDateTimeDisplay" 
+                           readonly 
+                           tabindex="-1" 
+                           style="pointer-events: none; background-color: #f8fafc; user-select: none; border-color: #cbd5e1; text-align: center;" 
+                           class="form-control-hms font-mono text-[11px] font-bold text-slate-800 cursor-not-allowed select-none !text-center w-full" 
+                           value="{{ now()->format('m/d/Y h:i:s A') }}"
+                           title="Check-in date & time is locked to system live clock">
                     <input type="hidden" name="checked_in_at" id="checkInDateTime" value="{{ now()->toIso8601String() }}">
                 </div>
                 <div>
