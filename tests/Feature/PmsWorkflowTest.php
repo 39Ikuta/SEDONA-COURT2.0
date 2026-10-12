@@ -33,22 +33,22 @@ class PmsWorkflowTest extends TestCase
 
         // Check in guest to Room 1
         $checkinResponse = $this->actingAs($cashier)->post(route('checkin.store'), [
-            'room_id'     => $room->id,
-            'guest_name'  => 'Juan Dela Cruz',
-            'rate_tier'   => '12h',
-            'headcount'   => 2,
-            'is_senior'   => 0,
+            'room_id' => $room->id,
+            'guest_name' => 'Juan Dela Cruz',
+            'rate_tier' => '12h',
+            'headcount' => 2,
+            'is_senior' => 0,
         ]);
 
         $checkinResponse->assertRedirect(route('dashboard'));
         $this->assertDatabaseHas('rooms', [
-            'id'     => $room->id,
+            'id' => $room->id,
             'status' => 'occupied',
         ]);
         $this->assertDatabaseHas('folios', [
-            'room_id'   => $room->id,
+            'room_id' => $room->id,
             'rate_tier' => '12h',
-            'status'    => 'active',
+            'status' => 'active',
         ]);
     }
 
@@ -60,10 +60,10 @@ class PmsWorkflowTest extends TestCase
 
         // Check in Room 1
         $this->actingAs($cashier)->post(route('checkin.store'), [
-            'room_id'     => $sourceRoom->id,
-            'guest_name'  => 'Transfer Guest',
-            'rate_tier'   => '3h',
-            'headcount'   => 1,
+            'room_id' => $sourceRoom->id,
+            'guest_name' => 'Transfer Guest',
+            'rate_tier' => '3h',
+            'headcount' => 1,
         ]);
 
         $folio = Folio::where('room_id', $sourceRoom->id)->where('status', 'active')->first();
@@ -72,13 +72,65 @@ class PmsWorkflowTest extends TestCase
         // Perform Room Transfer
         $transferResponse = $this->actingAs($cashier)->post(route('folios.transfer', $folio->id), [
             'target_room_id' => $targetRoom->id,
-            'reason'         => 'Air conditioning issue in Room 1',
+            'reason' => 'Air conditioning issue in Room 1',
         ]);
 
         $transferResponse->assertRedirect(route('dashboard'));
         $this->assertEquals('available', $sourceRoom->fresh()->status);
         $this->assertEquals('occupied', $targetRoom->fresh()->status);
         $this->assertEquals($targetRoom->id, $folio->fresh()->room_id);
+    }
+
+    public function test_extend_stay_accepts_hours_submitted_as_a_form_string(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 12)->setTime(12, 0));
+        $cashier = User::where('email', 'pau@sedonapms.com')->firstOrFail();
+        $room = Room::where('number', '1')->firstOrFail();
+        $this->actingAs($cashier)->post(route('checkin.store'), [
+            'room_id' => $room->id,
+            'guest_name' => 'Extension Guest',
+            'headcount' => 2,
+            'rate_tier' => '3h',
+        ])->assertSessionHas('success');
+        $folio = Folio::where('room_id', $room->id)->where('status', 'active')->firstOrFail();
+
+        $this->post(route('folios.extend', $folio), ['hours' => '3'])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', 'Room 1 stay extended by 3 hr(s).');
+
+        $this->assertDatabaseHas('folios', [
+            'id' => $folio->id,
+            'extra_hours' => 3,
+            'expected_checkout_at' => '2026-10-12 18:00:00',
+            'surcharge_total' => 390,
+            'net_total' => 1085,
+        ]);
+    }
+
+    public function test_extend_stay_rejects_invalid_hours_without_changing_the_folio(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 12)->setTime(12, 0));
+        $cashier = User::where('email', 'pau@sedonapms.com')->firstOrFail();
+        $room = Room::where('number', '1')->firstOrFail();
+        $this->actingAs($cashier)->post(route('checkin.store'), [
+            'room_id' => $room->id,
+            'guest_name' => 'Extension Guest',
+            'headcount' => 2,
+            'rate_tier' => '3h',
+        ])->assertSessionHas('success');
+        $folio = Folio::where('room_id', $room->id)->where('status', 'active')->firstOrFail();
+
+        $this->post(route('folios.extend', $folio), ['hours' => 'invalid'])
+            ->assertSessionHasErrors('hours');
+
+        $this->assertDatabaseHas('folios', [
+            'id' => $folio->id,
+            'extra_hours' => 0,
+            'expected_checkout_at' => '2026-10-12 15:00:00',
+            'surcharge_total' => 0,
+            'net_total' => 695,
+        ]);
     }
 
     public function test_kitchen_kds_workflow()
@@ -89,10 +141,10 @@ class PmsWorkflowTest extends TestCase
 
         // Check in room
         $this->actingAs($cashier)->post(route('checkin.store'), [
-            'room_id'    => $room->id,
+            'room_id' => $room->id,
             'guest_name' => 'Food Guest',
-            'rate_tier'  => '12h',
-            'headcount'  => 2,
+            'rate_tier' => '12h',
+            'headcount' => 2,
         ]);
 
         $folio = Folio::where('room_id', $room->id)->where('status', 'active')->first();
@@ -100,10 +152,10 @@ class PmsWorkflowTest extends TestCase
 
         // Place POS order for Room 1
         $this->actingAs($cashier)->post(route('pos.order.store'), [
-            'order_type'           => 'room_charge',
-            'room_id'              => $room->id,
-            'items'                => [
-                ['id' => $posItem->id, 'qty' => 2]
+            'order_type' => 'room_charge',
+            'room_id' => $room->id,
+            'items' => [
+                ['id' => $posItem->id, 'qty' => 2],
             ],
             'special_instructions' => 'Serve hot',
         ]);
@@ -142,10 +194,10 @@ class PmsWorkflowTest extends TestCase
 
         // Check in room 5
         $this->actingAs($cashier)->post(route('checkin.store'), [
-            'room_id'    => $room->id,
+            'room_id' => $room->id,
             'guest_name' => 'Skip Guest',
-            'rate_tier'  => '3h',
-            'headcount'  => 1,
+            'rate_tier' => '3h',
+            'headcount' => 1,
         ]);
 
         $folio = Folio::where('room_id', $room->id)->where('status', 'active')->first();
