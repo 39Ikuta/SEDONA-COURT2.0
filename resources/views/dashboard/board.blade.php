@@ -239,7 +239,7 @@
                         </div>
                     </div>
                 @else
-                    <div onclick="openCheckInModal({{ $room->id }}, '{{ $room->number }}', '{{ $room->type }}', {{ $room->base_rate_3h }}, {{ $room->base_rate_12h }}, {{ $room->base_rate_24h }}, {{ $room->base_rate_promo }})"
+                    <div onclick="openCheckInModal({{ $room->id }}, '{{ $room->number }}', '{{ $room->type }}', {{ $room->base_rate_3h }}, {{ $room->base_rate_4h }}, {{ $room->base_rate_6h }}, {{ $room->base_rate_12h }}, {{ $room->base_rate_24h }}, {{ $room->base_rate_promo }})"
                          class="bg-[#f2fbf4] rounded-xl border border-emerald-200 p-3 flex flex-col justify-between min-h-[168px] cursor-pointer hover:shadow-md hover:border-emerald-400 transition">
                         <div class="flex items-start justify-between gap-1">
                             <div>

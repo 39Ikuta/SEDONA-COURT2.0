@@ -48,6 +48,7 @@
                 <label class="block text-xs font-bold text-slate-700 mb-1">Stay Duration Tier:</label>
                 <select name="rate_tier" id="checkInTierSelect" onchange="updateCheckInRatePreview()" class="form-control-hms font-bold">
                     <option value="3h">3 Hours Stay</option>
+                    <option value="4h">4 Hours Stay</option>
                     <option value="6h">6 Hours Stay</option>
                     <option value="12h" selected>12 Hours Stay</option>
                     <option value="24h">24 Hours Stay</option>
@@ -276,7 +277,7 @@
         }
     }
 
-    function openCheckInModal(roomId, roomNumber, roomType, r3, r12, r24, rpromo) {
+    function openCheckInModal(roomId, roomNumber, roomType, r3, r4, r6, r12, r24, rpromo) {
         document.getElementById('checkInRoomId').value = roomId;
         document.getElementById('checkInModalTitle').textContent = `Check In Room ${roomNumber} (${roomType})`;
         
@@ -284,7 +285,7 @@
         if (checkInClockInterval) clearInterval(checkInClockInterval);
         checkInClockInterval = setInterval(syncCheckInLiveTime, 1000);
 
-        currentRoomRates = { '3h': r3, '6h': r3 * 2, '12h': r12, '24h': r24, 'promo': rpromo };
+        currentRoomRates = { '3h': r3, '4h': r4, '6h': r6, '12h': r12, '24h': r24, 'promo': rpromo };
         updateCheckInRatePreview();
         document.getElementById('checkInModal').classList.remove('hidden');
     }
@@ -341,7 +342,7 @@
     function updateDiscountPreview() {
         const type = document.getElementById('discountTypeSelect').value.toUpperCase();
         const tier = currentDiscountContext.roomType.toUpperCase().includes('VIP') ? 'VIP' : (currentDiscountContext.roomType.toUpperCase().includes('PREMIUM') ? 'PREMIUM' : 'CLASSIC');
-        const dur = currentDiscountContext.rateTier.startsWith('6') ? '6h' : (currentDiscountContext.rateTier.startsWith('12') ? '12h' : (currentDiscountContext.rateTier.startsWith('24') ? '24h' : '3h'));
+        const dur = currentDiscountContext.rateTier.startsWith('4') ? '4h' : currentDiscountContext.rateTier.startsWith('6') ? '6h' : (currentDiscountContext.rateTier.startsWith('12') ? '12h' : (currentDiscountContext.rateTier.startsWith('24') ? '24h' : '3h'));
 
         document.getElementById('discountTierNotice').textContent = `${tier} Room (${dur})`;
         

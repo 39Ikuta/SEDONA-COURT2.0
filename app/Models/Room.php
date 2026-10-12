@@ -5,24 +5,26 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Auth;
 
 class Room extends Model
 {
     protected $fillable = [
         'number', 'floor', 'name', 'type', 'status',
         'is_staff_quarters',
-        'base_rate_3h', 'base_rate_6h', 'base_rate_12h',
+        'base_rate_3h', 'base_rate_4h', 'base_rate_6h', 'base_rate_12h',
         'base_rate_24h', 'base_rate_promo',
         'notes',
     ];
 
     protected $casts = [
         'is_staff_quarters' => 'boolean',
-        'base_rate_3h'      => 'decimal:2',
-        'base_rate_6h'      => 'decimal:2',
-        'base_rate_12h'     => 'decimal:2',
-        'base_rate_24h'     => 'decimal:2',
-        'base_rate_promo'   => 'decimal:2',
+        'base_rate_3h' => 'decimal:2',
+        'base_rate_4h' => 'decimal:2',
+        'base_rate_6h' => 'decimal:2',
+        'base_rate_12h' => 'decimal:2',
+        'base_rate_24h' => 'decimal:2',
+        'base_rate_promo' => 'decimal:2',
     ];
 
     // ── Relationships ───────────────────────────────────────────────
@@ -35,8 +37,8 @@ class Room extends Model
     public function activeFolio(): HasOne
     {
         return $this->hasOne(Folio::class)
-                    ->where('status', 'active')
-                    ->latestOfMany();
+            ->where('status', 'active')
+            ->latestOfMany();
     }
 
     public function bookings(): HasMany
@@ -64,10 +66,11 @@ class Room extends Model
     public function getRateForTier(string $tier): float
     {
         return match ($tier) {
-            '3h'    => (float) $this->base_rate_3h,
-            '6h'    => (float) $this->base_rate_6h,
-            '12h'   => (float) $this->base_rate_12h,
-            '24h'   => (float) $this->base_rate_24h,
+            '3h' => (float) $this->base_rate_3h,
+            '4h' => (float) $this->base_rate_4h,
+            '6h' => (float) $this->base_rate_6h,
+            '12h' => (float) $this->base_rate_12h,
+            '24h' => (float) $this->base_rate_24h,
             'promo' => (float) $this->base_rate_promo,
             default => 0.0,
         };
@@ -76,10 +79,11 @@ class Room extends Model
     public function getTierHours(string $tier): int
     {
         return match ($tier) {
-            '3h'    => 3,
-            '6h'    => 6,
-            '12h'   => 12,
-            '24h'   => 24,
+            '3h' => 3,
+            '4h' => 4,
+            '6h' => 6,
+            '12h' => 12,
+            '24h' => 24,
             'promo' => 12,
             default => 0,
         };
@@ -115,8 +119,8 @@ class Room extends Model
         return Folio::create([
             'room_id' => $this->id,
             'guest_id' => $guest->id,
-            'user_id' => \Illuminate\Support\Facades\Auth::id() ?? 1,
-            'transaction_id' => 'STAFF-12-' . strtoupper(substr(uniqid(), -4)),
+            'user_id' => Auth::id() ?? 1,
+            'transaction_id' => 'STAFF-12-'.strtoupper(substr(uniqid(), -4)),
             'rate_tier' => 'promo',
             'checked_in_at' => now(),
             'expected_checkout_at' => now()->addYear(),

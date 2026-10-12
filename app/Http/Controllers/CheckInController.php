@@ -6,10 +6,11 @@ use App\Models\Booking;
 use App\Models\Folio;
 use App\Models\Guest;
 use App\Models\Order;
-use App\Models\PosItem;
 use App\Models\Room;
 use App\Models\Shift;
+use App\Services\DiscountService;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,7 +28,7 @@ class CheckInController extends Controller
             'room_id' => 'required|exists:rooms,id',
             'guest_name' => 'nullable|string|max:255',
             'headcount' => 'required|integer|min:1',
-            'rate_tier' => 'required|in:3h,6h,12h,24h,promo',
+            'rate_tier' => 'required|in:3h,4h,6h,12h,24h,promo',
             'is_senior' => 'nullable|boolean',
             'is_pwd' => 'nullable|boolean',
             'booking_id' => 'nullable|exists:bookings,id',
@@ -36,24 +37,24 @@ class CheckInController extends Controller
 
         $room = Room::findOrFail($validated['room_id']);
 
-        if ($room->status !== 'available' && !$request->has('booking_id')) {
-            return back()->with('error', 'Room ' . $room->number . ' is not available for check-in.');
+        if ($room->status !== 'available' && ! $request->has('booking_id')) {
+            return back()->with('error', 'Room '.$room->number.' is not available for check-in.');
         }
 
         DB::beginTransaction();
         try {
-            $guestName = $validated['guest_name'] ?: 'Guest Room ' . $room->number;
+            $guestName = $validated['guest_name'] ?: 'Guest Room '.$room->number;
 
             $guest = Guest::create([
                 'name' => $guestName,
-                'contact' => 'WALKIN-' . time(),
+                'contact' => 'WALKIN-'.time(),
                 'headcount' => $validated['headcount'],
                 'is_senior' => $request->boolean('is_senior'),
                 'is_pwd' => $request->boolean('is_pwd'),
             ]);
 
             $hours = $room->getTierHours($validated['rate_tier']);
-            $checkedInAt = !empty($validated['checked_in_at']) ? \Carbon\Carbon::parse($validated['checked_in_at']) : now();
+            $checkedInAt = ! empty($validated['checked_in_at']) ? Carbon::parse($validated['checked_in_at']) : now();
             $expectedCheckoutAt = $checkedInAt->copy()->addHours($hours);
             $roomRate = $room->getRateForTier($validated['rate_tier']);
 
@@ -88,7 +89,7 @@ class CheckInController extends Controller
 
             $room->update(['status' => 'occupied']);
 
-            if (!empty($validated['booking_id'])) {
+            if (! empty($validated['booking_id'])) {
                 Booking::where('id', $validated['booking_id'])->update(['status' => 'checked_in']);
             }
 
@@ -107,7 +108,8 @@ class CheckInController extends Controller
                 ->with('success', "Room {$room->number} checked in successfully! (Folio: {$folio->transaction_id})");
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Check-in failed: ' . $e->getMessage());
+
+            return back()->with('error', 'Check-in failed: '.$e->getMessage());
         }
     }
 
@@ -128,7 +130,9 @@ class CheckInController extends Controller
         $checkOutTime = now();
 
         $tierHours = $room ? $room->getTierHours($folio->rate_tier) : 3;
-        if ($tierHours == 0) $tierHours = 3;
+        if ($tierHours == 0) {
+            $tierHours = 3;
+        }
 
         $xtendHours = (int) ($folio->extra_hours ?? 0);
         $totalBookedHours = $tierHours + $xtendHours;
@@ -148,7 +152,7 @@ class CheckInController extends Controller
         $addOnItems = [];
         $addOnsTotal = 0;
 
-        if (!empty($folio->pos_items) && is_array($folio->pos_items)) {
+        if (! empty($folio->pos_items) && is_array($folio->pos_items)) {
             foreach ($folio->pos_items as $p) {
                 $addOnItems[] = [
                     'name' => $p['name'] ?? 'Item',
@@ -171,7 +175,7 @@ class CheckInController extends Controller
         $remainingDeposit = $applyDeposit ? max(0, $deposit - $amountToPay) : $deposit;
         $totalAmountToPay = $applyDeposit ? max(0, $amountToPay - $deposit) : $amountToPay;
 
-        $discountOptions = \App\Services\DiscountService::getOptionsForRoom($room->type ?? 'Classic Room', $folio->rate_tier);
+        $discountOptions = DiscountService::getOptionsForRoom($room->type ?? 'Classic Room', $folio->rate_tier);
 
         $allOccupied = Room::where('status', 'occupied')->with('activeFolio.guest')->get();
 
@@ -191,17 +195,17 @@ class CheckInController extends Controller
     public function processCheckout(Request $request, Folio $folio): RedirectResponse
     {
         $validated = $request->validate([
-            'payment_method'   => 'nullable|string|in:cash,gcash,split',
-            'cash_tendered'    => 'nullable|numeric|min:0',
-            'gcash_amount'     => 'nullable|numeric|min:0',
-            'gcash_reference'  => 'nullable|string|max:50',
-            'customer_name'    => 'nullable|string|max:150',
+            'payment_method' => 'nullable|string|in:cash,gcash,split',
+            'cash_tendered' => 'nullable|numeric|min:0',
+            'gcash_amount' => 'nullable|numeric|min:0',
+            'gcash_reference' => 'nullable|string|max:50',
+            'customer_name' => 'nullable|string|max:150',
             'security_deposit' => 'nullable|numeric|min:0',
-            'apply_deposit'    => 'nullable',
-            'discount_type'    => 'nullable|string|in:none,senior,pwd,dc,NONE,SENIOR,PWD,DC',
-            'discount_id_ref'  => 'nullable|string|max:100',
-            'checked_in_at'    => 'nullable|date',
-            'room_charge'      => 'nullable|numeric|min:0',
+            'apply_deposit' => 'nullable',
+            'discount_type' => 'nullable|string|in:none,senior,pwd,dc,NONE,SENIOR,PWD,DC',
+            'discount_id_ref' => 'nullable|string|max:100',
+            'checked_in_at' => 'nullable|date',
+            'room_charge' => 'nullable|numeric|min:0',
         ]);
 
         DB::beginTransaction();
@@ -210,13 +214,15 @@ class CheckInController extends Controller
 
             $room = $folio->room;
             $tierHours = $room ? $room->getTierHours($folio->rate_tier) : 3;
-            if ($tierHours == 0) $tierHours = 3;
+            if ($tierHours == 0) {
+                $tierHours = 3;
+            }
 
             $xtendHours = (int) ($folio->extra_hours ?? 0);
             $totalBookedHours = $tierHours + $xtendHours;
 
             if ($request->filled('checked_in_at')) {
-                $checkInTime = \Carbon\Carbon::parse($request->input('checked_in_at'));
+                $checkInTime = Carbon::parse($request->input('checked_in_at'));
                 $folio->checked_in_at = $checkInTime;
                 $folio->expected_checkout_at = $checkInTime->copy()->addHours($totalBookedHours);
             } else {
@@ -242,7 +248,7 @@ class CheckInController extends Controller
             }
 
             $addOnsTotal = 0;
-            if (!empty($folio->pos_items) && is_array($folio->pos_items)) {
+            if (! empty($folio->pos_items) && is_array($folio->pos_items)) {
                 foreach ($folio->pos_items as $p) {
                     $addOnsTotal += (float) ($p['subtotal'] ?? 0);
                 }
@@ -258,7 +264,7 @@ class CheckInController extends Controller
                     $folio->senior_pwd_discount = false;
                 } else {
                     $roomType = $room->type ?? 'Classic Room';
-                    $discountAmount = \App\Services\DiscountService::getDiscountAmount($dType, $roomType, $folio->rate_tier);
+                    $discountAmount = DiscountService::getDiscountAmount($dType, $roomType, $folio->rate_tier);
                     $folio->discount_type = strtoupper($dType);
                     $folio->discount_id_ref = $request->input('discount_id_ref') ?: 'ID-VERIFIED';
                     $folio->discount_amount = $discountAmount;
@@ -327,7 +333,7 @@ class CheckInController extends Controller
                 $folio->room->update(['status' => 'available']);
             }
 
-            if (!empty($validated['customer_name']) && $folio->guest) {
+            if (! empty($validated['customer_name']) && $folio->guest) {
                 $folio->guest->update(['name' => $validated['customer_name']]);
             }
 
@@ -344,11 +350,12 @@ class CheckInController extends Controller
             DB::commit();
 
             return redirect()->route('dashboard')
-                ->with('success', "Room {$folio->room->number} successfully checked out! Settled: ₱" . number_format($finalBalanceToPay, 2) . " (Method: " . strtoupper($paymentMethod) . ", Change: ₱" . number_format($changeDue, 2) . ")")
+                ->with('success', "Room {$folio->room->number} successfully checked out! Settled: ₱".number_format($finalBalanceToPay, 2).' (Method: '.strtoupper($paymentMethod).', Change: ₱'.number_format($changeDue, 2).')')
                 ->with('settled_folio_id', $folio->id);
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Checkout failed: ' . $e->getMessage());
+
+            return back()->with('error', 'Checkout failed: '.$e->getMessage());
         }
     }
 
@@ -364,7 +371,7 @@ class CheckInController extends Controller
         $extraHours = (int) $validated['hours'];
         $folio->extra_hours += $extraHours;
         $folio->expected_checkout_at = Carbon::parse($folio->expected_checkout_at)->addHours($extraHours);
-        
+
         $ratePerHr = 130;
         $folio->surcharge_total += ($extraHours * $ratePerHr);
         $folio->recalculate();
@@ -379,7 +386,7 @@ class CheckInController extends Controller
     public function applyDiscount(Request $request, Folio $folio): RedirectResponse
     {
         $validated = $request->validate([
-            'discount_type'   => 'required|in:senior,pwd,dc,none',
+            'discount_type' => 'required|in:senior,pwd,dc,none',
             'discount_id_ref' => 'nullable|string|max:100',
         ]);
 
@@ -392,7 +399,7 @@ class CheckInController extends Controller
             $folio->senior_pwd_discount = false;
         } else {
             $roomType = $folio->room->type ?? 'Classic Room';
-            $discountAmount = \App\Services\DiscountService::getDiscountAmount($type, $roomType, $folio->rate_tier);
+            $discountAmount = DiscountService::getDiscountAmount($type, $roomType, $folio->rate_tier);
 
             $folio->discount_type = strtoupper($type);
             $folio->discount_id_ref = $validated['discount_id_ref'] ?? 'ID-VERIFIED';
@@ -405,39 +412,41 @@ class CheckInController extends Controller
 
         $typeName = match ($folio->discount_type) {
             'SENIOR' => 'Senior Citizen (Statutory Table)',
-            'PWD'    => 'PWD (Statutory Table)',
-            'DC'     => 'Sedona Discount Card (DC)',
-            default  => 'None',
+            'PWD' => 'PWD (Statutory Table)',
+            'DC' => 'Sedona Discount Card (DC)',
+            default => 'None',
         };
 
         return redirect()->route('dashboard')
-            ->with('success', "{$typeName} discount of ₱" . number_format($folio->discount_amount, 2) . " applied to Room {$folio->room->number} (Ref: {$folio->discount_id_ref}).");
+            ->with('success', "{$typeName} discount of ₱".number_format($folio->discount_amount, 2)." applied to Room {$folio->room->number} (Ref: {$folio->discount_id_ref}).");
     }
 
     /**
      * Update Guest Security Deposit (In Trust).
      */
-    public function updateDeposit(Request $request, Folio $folio): \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+    public function updateDeposit(Request $request, Folio $folio): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'security_deposit' => 'nullable|numeric|min:0|max:100000',
-            'apply_deposit'    => 'nullable',
-            'payment_method'   => 'nullable|string|in:cash,gcash,split',
-            'cash_tendered'    => 'nullable|numeric|min:0',
-            'gcash_amount'     => 'nullable|numeric|min:0',
-            'gcash_reference'  => 'nullable|string|max:50',
-            'change_due'       => 'nullable|numeric|min:0',
-            'discount_type'    => 'nullable|string|in:none,senior,pwd,dc,NONE,SENIOR,PWD,DC',
-            'discount_id_ref'  => 'nullable|string|max:100',
-            'checked_in_at'    => 'nullable|date',
-            'room_charge'      => 'nullable|numeric|min:0',
+            'apply_deposit' => 'nullable',
+            'payment_method' => 'nullable|string|in:cash,gcash,split',
+            'cash_tendered' => 'nullable|numeric|min:0',
+            'gcash_amount' => 'nullable|numeric|min:0',
+            'gcash_reference' => 'nullable|string|max:50',
+            'change_due' => 'nullable|numeric|min:0',
+            'discount_type' => 'nullable|string|in:none,senior,pwd,dc,NONE,SENIOR,PWD,DC',
+            'discount_id_ref' => 'nullable|string|max:100',
+            'checked_in_at' => 'nullable|date',
+            'room_charge' => 'nullable|numeric|min:0',
         ]);
 
         if ($request->filled('checked_in_at')) {
-            $cIn = \Carbon\Carbon::parse($request->input('checked_in_at'));
+            $cIn = Carbon::parse($request->input('checked_in_at'));
             $folio->checked_in_at = $cIn;
             $tierHours = $folio->room ? $folio->room->getTierHours($folio->rate_tier) : 3;
-            if ($tierHours == 0) $tierHours = 3;
+            if ($tierHours == 0) {
+                $tierHours = 3;
+            }
             $xtendHours = (int) ($folio->extra_hours ?? 0);
             $folio->expected_checkout_at = $cIn->copy()->addHours($tierHours + $xtendHours);
         }
@@ -475,7 +484,7 @@ class CheckInController extends Controller
                 $folio->senior_pwd_discount = false;
             } else {
                 $roomType = $folio->room->type ?? 'Classic Room';
-                $discountAmount = \App\Services\DiscountService::getDiscountAmount($dType, $roomType, $folio->rate_tier);
+                $discountAmount = DiscountService::getDiscountAmount($dType, $roomType, $folio->rate_tier);
                 $folio->discount_type = strtoupper($dType);
                 $folio->discount_id_ref = $request->input('discount_id_ref') ?: 'ID-VERIFIED';
                 $folio->discount_amount = $discountAmount;
@@ -514,13 +523,12 @@ class CheckInController extends Controller
                 'discount_type' => $folio->discount_type,
                 'discount_id_ref' => $folio->discount_id_ref,
                 'discount_amount' => (float) $folio->discount_amount,
-                'formatted_deposit' => number_format((float)$folio->security_deposit, 2),
+                'formatted_deposit' => number_format((float) $folio->security_deposit, 2),
             ]);
         }
 
-        return back()->with('success', "Folio settlement details updated.");
+        return back()->with('success', 'Folio settlement details updated.');
     }
-
 
     /**
      * Transfer Guest to Another Available Room.
@@ -566,7 +574,8 @@ class CheckInController extends Controller
                 ->with('success', "Guest transferred successfully from Room {$oldRoom->number} to Room {$targetRoom->number}.");
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Transfer failed: ' . $e->getMessage());
+
+            return back()->with('error', 'Transfer failed: '.$e->getMessage());
         }
     }
 
@@ -594,7 +603,7 @@ class CheckInController extends Controller
     {
         DB::beginTransaction();
         try {
-            $lossSlipId = 'FCE-' . str_pad(random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            $lossSlipId = 'FCE-'.str_pad(random_int(1, 999999), 6, '0', STR_PAD_LEFT);
 
             $uncollected = $folio->net_total;
             $folio->force_checkout = true;
@@ -613,10 +622,11 @@ class CheckInController extends Controller
             DB::commit();
 
             return redirect()->route('dashboard')
-                ->with('success', "Force Checkout approved for Room {$folio->room->number}. Audited Loss Slip {$lossSlipId} generated for ₱" . number_format($uncollected, 2) . ".");
+                ->with('success', "Force Checkout approved for Room {$folio->room->number}. Audited Loss Slip {$lossSlipId} generated for ₱".number_format($uncollected, 2).'.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Force checkout approval failed: ' . $e->getMessage());
+
+            return back()->with('error', 'Force checkout approval failed: '.$e->getMessage());
         }
     }
 
@@ -629,7 +639,9 @@ class CheckInController extends Controller
 
         $room = $folio->room;
         $tierHours = $room ? $room->getTierHours($folio->rate_tier) : 3;
-        if ($tierHours == 0) $tierHours = 3;
+        if ($tierHours == 0) {
+            $tierHours = 3;
+        }
 
         $checkInTime = $folio->checked_in_at;
         $checkOutTime = ($folio->status === 'checked_out' && $folio->checked_out_at) ? $folio->checked_out_at : now();
@@ -651,7 +663,7 @@ class CheckInController extends Controller
         }
 
         $addOnsTotal = 0;
-        if (!empty($folio->pos_items) && is_array($folio->pos_items)) {
+        if (! empty($folio->pos_items) && is_array($folio->pos_items)) {
             foreach ($folio->pos_items as $p) {
                 $addOnsTotal += (float) ($p['subtotal'] ?? 0);
             }
@@ -672,13 +684,13 @@ class CheckInController extends Controller
                 $totalDiscount = 0.00;
             } else {
                 $roomType = $room->type ?? 'Classic Room';
-                $totalDiscount = \App\Services\DiscountService::getDiscountAmount($reqDType, $roomType, $folio->rate_tier);
+                $totalDiscount = DiscountService::getDiscountAmount($reqDType, $roomType, $folio->rate_tier);
                 $discountType = strtoupper($reqDType);
                 $discountIdRef = $request->input('discount_id_ref', $folio->discount_id_ref ?? 'ID-VERIFIED');
             }
         }
 
-        if ($folio->status === 'checked_out' && !$request->has('discount_type')) {
+        if ($folio->status === 'checked_out' && ! $request->has('discount_type')) {
             $grossTotal = (float) $folio->gross_total;
             $amountAfterDiscount = max(0, $grossTotal - $totalDiscount);
             $finalBalanceToPay = (float) $folio->net_total;
@@ -728,13 +740,15 @@ class CheckInController extends Controller
         $room = $folio->room;
 
         $tierHours = $room ? $room->getTierHours($folio->rate_tier) : 3;
-        if ($tierHours == 0) $tierHours = 3;
+        if ($tierHours == 0) {
+            $tierHours = 3;
+        }
 
         $xtendHours = (int) ($folio->extra_hours ?? 0);
         $totalBookedHours = $tierHours + $xtendHours;
 
         if ($request->has('checked_in_at')) {
-            $checkInTime = \Carbon\Carbon::parse($request->input('checked_in_at'));
+            $checkInTime = Carbon::parse($request->input('checked_in_at'));
         } else {
             $checkInTime = $folio->checked_in_at;
         }
@@ -742,7 +756,7 @@ class CheckInController extends Controller
         $expectedCheckoutAt = $checkInTime->copy()->addHours($totalBookedHours);
 
         if ($request->has('checked_out_at')) {
-            $checkOutTime = \Carbon\Carbon::parse($request->input('checked_out_at'));
+            $checkOutTime = Carbon::parse($request->input('checked_out_at'));
         } else {
             $checkOutTime = ($folio->status === 'checked_out' && $folio->checked_out_at) ? $folio->checked_out_at : now();
         }
@@ -765,7 +779,7 @@ class CheckInController extends Controller
         }
 
         $addOnsTotal = 0;
-        if (!empty($folio->pos_items) && is_array($folio->pos_items)) {
+        if (! empty($folio->pos_items) && is_array($folio->pos_items)) {
             foreach ($folio->pos_items as $p) {
                 $addOnsTotal += (float) ($p['subtotal'] ?? 0);
             }
@@ -791,20 +805,20 @@ class CheckInController extends Controller
                 $totalDiscount = 0.00;
             } else {
                 $roomType = $room->type ?? 'Classic Room';
-                $totalDiscount = \App\Services\DiscountService::getDiscountAmount($reqDType, $roomType, $folio->rate_tier);
+                $totalDiscount = DiscountService::getDiscountAmount($reqDType, $roomType, $folio->rate_tier);
                 $discountType = strtoupper($reqDType);
                 $discountIdRef = $request->input('discount_id_ref', $folio->discount_id_ref ?? 'ID-VERIFIED');
             }
         }
 
-        if ($folio->status === 'checked_out' && !$request->has('deposit') && !$request->has('apply_deposit') && !$request->has('discount_type') && !$request->has('room_charge') && !$request->has('checked_in_at')) {
+        if ($folio->status === 'checked_out' && ! $request->has('deposit') && ! $request->has('apply_deposit') && ! $request->has('discount_type') && ! $request->has('room_charge') && ! $request->has('checked_in_at')) {
             $grossTotal = (float) $folio->gross_total;
             $amountAfterDiscount = max(0, $grossTotal - $totalDiscount);
             $finalBalanceToPay = (float) $folio->net_total;
             $depositApplied = ($folio->deposit_status === 'applied_to_bill') ? min($deposit, $amountAfterDiscount) : 0.00;
             $remainingDeposit = ($folio->deposit_status === 'applied_to_bill') ? max(0, $deposit - $amountAfterDiscount) : $deposit;
         } else {
-            $grossTotal = ($folio->status === 'checked_out' && !$request->has('room_charge') && !$request->has('checked_in_at'))
+            $grossTotal = ($folio->status === 'checked_out' && ! $request->has('room_charge') && ! $request->has('checked_in_at'))
                 ? (float) $folio->gross_total
                 : (float) ($roomRate + $addHoursRate + $addOnsTotal);
             $amountAfterDiscount = max(0, $grossTotal - $totalDiscount);
@@ -831,7 +845,7 @@ class CheckInController extends Controller
 
         if ($request->has('change_due')) {
             $changeDue = max(0, (float) $request->input('change_due'));
-        } elseif (($folio->status === 'checked_out' || (float) ($folio->change_due ?? 0) > 0) && !$request->has('cash_tendered')) {
+        } elseif (($folio->status === 'checked_out' || (float) ($folio->change_due ?? 0) > 0) && ! $request->has('cash_tendered')) {
             $changeDue = (float) ($folio->change_due ?? 0.00);
         } else {
             if ($paymentMethod === 'cash') {
@@ -871,7 +885,7 @@ class CheckInController extends Controller
     public function showGatePass(Folio $folio): View
     {
         $folio->load(['room', 'guest', 'cashier']);
-        $ticketNo = 'GP-RM' . ($folio->room->number ?? '00') . '-' . ($folio->checked_out_at ? $folio->checked_out_at->format('mdHi') : now()->format('mdHi'));
+        $ticketNo = 'GP-RM'.($folio->room->number ?? '00').'-'.($folio->checked_out_at ? $folio->checked_out_at->format('mdHi') : now()->format('mdHi'));
 
         return view('checkout.gate_pass', compact('folio', 'ticketNo'));
     }
@@ -910,4 +924,3 @@ class CheckInController extends Controller
         return view('checkout.deposit_refund_slip', compact('folio', 'depositAmount', 'deductions', 'refundAmount'));
     }
 }
-

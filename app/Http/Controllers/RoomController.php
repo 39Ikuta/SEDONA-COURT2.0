@@ -6,7 +6,6 @@ use App\Models\PosItem;
 use App\Models\Room;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class RoomController extends Controller
@@ -28,7 +27,7 @@ class RoomController extends Controller
         }
         $room->save();
 
-        $message = "Room {$room->number} status changed from " . strtoupper($oldStatus) . " to " . strtoupper($room->status) . ".";
+        $message = "Room {$room->number} status changed from ".strtoupper($oldStatus).' to '.strtoupper($room->status).'.';
 
         return back()->with('success', $message);
     }
@@ -46,7 +45,7 @@ class RoomController extends Controller
         $room->status = $newStatus;
         $room->save();
 
-        return back()->with('success', "Room {$room->number} is now marked as " . strtoupper($newStatus) . ".");
+        return back()->with('success', "Room {$room->number} is now marked as ".strtoupper($newStatus).'.');
     }
 
     /**
@@ -73,6 +72,7 @@ class RoomController extends Controller
             $validated = $request->validate([
                 'room_id' => 'required|exists:rooms,id',
                 'base_rate_3h' => 'required|numeric|min:0',
+                'base_rate_4h' => 'required|numeric|min:0|max:999999.99',
                 'base_rate_6h' => 'required|numeric|min:0',
                 'base_rate_12h' => 'required|numeric|min:0',
                 'base_rate_24h' => 'required|numeric|min:0',
@@ -111,28 +111,28 @@ class RoomController extends Controller
         abort_unless(auth()->user()->hasAnyRole(['admin', 'owner']), 403, 'Unauthorized.');
 
         $validated = $request->validate([
-            'name'              => 'required|string|max:120|unique:pos_items,name',
-            'category'          => 'required|string|max:60',
-            'price'             => 'required|numeric|min:0',
-            'is_tracked'        => 'nullable|boolean',
-            'stock_quantity'    => 'nullable|integer|min:0',
-            'reorder_level'     => 'nullable|integer|min:0',
-            'kitchen_hours_only'=> 'nullable|boolean',
-            'is_available'      => 'nullable|boolean',
+            'name' => 'required|string|max:120|unique:pos_items,name',
+            'category' => 'required|string|max:60',
+            'price' => 'required|numeric|min:0',
+            'is_tracked' => 'nullable|boolean',
+            'stock_quantity' => 'nullable|integer|min:0',
+            'reorder_level' => 'nullable|integer|min:0',
+            'kitchen_hours_only' => 'nullable|boolean',
+            'is_available' => 'nullable|boolean',
         ]);
 
         $maxSort = PosItem::where('category', $validated['category'])->max('sort_order') ?? 0;
 
         PosItem::create([
-            'name'               => trim($validated['name']),
-            'category'           => trim($validated['category']),
-            'price'              => $validated['price'],
-            'is_tracked'         => $request->boolean('is_tracked', false),
-            'stock_quantity'     => $request->boolean('is_tracked') ? (int)($validated['stock_quantity'] ?? 0) : 0,
-            'reorder_level'      => (int)($validated['reorder_level'] ?? 5),
+            'name' => trim($validated['name']),
+            'category' => trim($validated['category']),
+            'price' => $validated['price'],
+            'is_tracked' => $request->boolean('is_tracked', false),
+            'stock_quantity' => $request->boolean('is_tracked') ? (int) ($validated['stock_quantity'] ?? 0) : 0,
+            'reorder_level' => (int) ($validated['reorder_level'] ?? 5),
             'kitchen_hours_only' => $request->boolean('kitchen_hours_only', false),
-            'is_available'       => $request->boolean('is_available', true),
-            'sort_order'         => $maxSort + 1,
+            'is_available' => $request->boolean('is_available', true),
+            'sort_order' => $maxSort + 1,
         ]);
 
         return back()->with('success', "New catalog item \u201c{$validated['name']}\u201d added successfully.");

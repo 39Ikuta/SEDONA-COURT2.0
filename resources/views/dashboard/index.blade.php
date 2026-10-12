@@ -126,7 +126,7 @@
                                 @else
                                     <tr>
                                         <td>
-                                            <button onclick="openCheckInModal({{ $room->id }}, '{{ $room->number }}', '{{ $room->type }}', {{ $room->base_rate_3h }}, {{ $room->base_rate_12h }}, {{ $room->base_rate_24h }}, {{ $room->base_rate_promo }})" class="btn-checkin">
+                                            <button onclick="openCheckInModal({{ $room->id }}, '{{ $room->number }}', '{{ $room->type }}', {{ $room->base_rate_3h }}, {{ $room->base_rate_4h }}, {{ $room->base_rate_6h }}, {{ $room->base_rate_12h }}, {{ $room->base_rate_24h }}, {{ $room->base_rate_promo }})" class="btn-checkin">
                                                 Check In
                                             </button>
                                         </td>

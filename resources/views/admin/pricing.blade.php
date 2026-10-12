@@ -59,6 +59,7 @@
                         <th>FLOOR</th>
                         <th>ROOM TYPE</th>
                         <th>3 HOURS</th>
+                        <th>4 HOURS</th>
                         <th>6 HOURS</th>
                         <th>12 HOURS</th>
                         <th>24 HOURS</th>
@@ -70,12 +71,20 @@
                 <tbody>
                     @foreach($rooms as $room)
                         <tr>
-                            <td class="font-bold font-mono text-sm">{{ $room->number }}</td>
+                            <td class="font-bold font-mono text-sm">
+                                {{ $room->number }}
+                                @unless($room->is_staff_quarters)
+                                    <form id="room-rate-{{ $room->id }}" method="POST" action="{{ route('admin.pricing.update') }}">
+                                        @csrf
+                                        <input type="hidden" name="room_id" value="{{ $room->id }}">
+                                    </form>
+                                @endunless
+                            </td>
                             <td class="font-mono text-[11px] text-slate-500">Floor {{ $room->floor }}</td>
                             <td class="text-left pl-2 font-medium">{{ $room->type }}</td>
 
                             @if($room->is_staff_quarters)
-                                <td colspan="5" class="bg-indigo-50 text-indigo-900 font-bold text-center">
+                                <td colspan="6" class="bg-indigo-50 text-indigo-900 font-bold text-center">
                                     Permanent Employee Quarters (Non-billable)
                                 </td>
                                 <td>
@@ -83,35 +92,34 @@
                                 </td>
                                 <td>&#8212;</td>
                             @else
-                                <form method="POST" action="{{ route('admin.pricing.update') }}">
-                                    @csrf
-                                    <input type="hidden" name="room_id" value="{{ $room->id }}">
                                     <td>
-                                        <input type="number" step="0.01" name="base_rate_3h" value="{{ $room->base_rate_3h }}" class="form-control-hms font-mono text-right !w-20">
+                                        <input type="number" step="0.01" name="base_rate_3h" form="room-rate-{{ $room->id }}" min="0" max="999999.99" required value="{{ $room->base_rate_3h }}" class="form-control-hms font-mono text-right !w-20">
                                     </td>
                                     <td>
-                                        <input type="number" step="0.01" name="base_rate_6h" value="{{ $room->base_rate_6h }}" class="form-control-hms font-mono text-right !w-20">
+                                        <input type="number" step="0.01" name="base_rate_4h" form="room-rate-{{ $room->id }}" min="0" max="999999.99" required value="{{ $room->base_rate_4h }}" class="form-control-hms font-mono text-right !w-20">
                                     </td>
                                     <td>
-                                        <input type="number" step="0.01" name="base_rate_12h" value="{{ $room->base_rate_12h }}" class="form-control-hms font-mono text-right !w-24">
+                                        <input type="number" step="0.01" name="base_rate_6h" form="room-rate-{{ $room->id }}" min="0" max="999999.99" required value="{{ $room->base_rate_6h }}" class="form-control-hms font-mono text-right !w-20">
                                     </td>
                                     <td>
-                                        <input type="number" step="0.01" name="base_rate_24h" value="{{ $room->base_rate_24h }}" class="form-control-hms font-mono text-right !w-24">
+                                        <input type="number" step="0.01" name="base_rate_12h" form="room-rate-{{ $room->id }}" min="0" max="999999.99" required value="{{ $room->base_rate_12h }}" class="form-control-hms font-mono text-right !w-24">
                                     </td>
                                     <td>
-                                        <input type="number" step="0.01" name="base_rate_promo" value="{{ $room->base_rate_promo }}" class="form-control-hms font-mono text-right !w-24">
+                                        <input type="number" step="0.01" name="base_rate_24h" form="room-rate-{{ $room->id }}" min="0" max="999999.99" required value="{{ $room->base_rate_24h }}" class="form-control-hms font-mono text-right !w-24">
                                     </td>
                                     <td>
-                                        <button type="submit" formaction="{{ route('rooms.maintenance.toggle', $room->id) }}" class="px-2 py-1 {{ $room->status === 'maintenance' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700' }} text-[10px] font-bold rounded">
+                                        <input type="number" step="0.01" name="base_rate_promo" form="room-rate-{{ $room->id }}" min="0" max="999999.99" required value="{{ $room->base_rate_promo }}" class="form-control-hms font-mono text-right !w-24">
+                                    </td>
+                                    <td>
+                                        <button type="submit" form="room-rate-{{ $room->id }}" formnovalidate formaction="{{ route('rooms.maintenance.toggle', $room->id) }}" class="px-2 py-1 {{ $room->status === 'maintenance' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700' }} text-[10px] font-bold rounded">
                                             {{ $room->status === 'maintenance' ? 'In Maintenance' : 'Set Out of Order' }}
                                         </button>
                                     </td>
                                     <td>
-                                        <button type="submit" class="px-3 py-1 bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold rounded">
+                                        <button type="submit" form="room-rate-{{ $room->id }}" class="px-3 py-1 bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold rounded">
                                             Save Rate
                                         </button>
                                     </td>
-                                </form>
                             @endif
                         </tr>
                     @endforeach
@@ -147,26 +155,28 @@
                     @foreach($posItems as $item)
                         <tr>
                             <td class="font-bold text-[11px] text-slate-600 text-left pl-3">{{ $item->category }}</td>
-                            <td class="font-bold text-slate-900 text-left pl-3">{{ $item->name }}</td>
-
-                            <form method="POST" action="{{ route('admin.pricing.update') }}">
-                                @csrf
-                                <input type="hidden" name="pos_item_id" value="{{ $item->id }}">
+                            <td class="font-bold text-slate-900 text-left pl-3">
+                                {{ $item->name }}
+                                <form id="item-price-{{ $item->id }}" method="POST" action="{{ route('admin.pricing.update') }}">
+                                    @csrf
+                                    <input type="hidden" name="pos_item_id" value="{{ $item->id }}">
+                                    <input type="hidden" name="is_available" value="0">
+                                </form>
+                            </td>
                                 <td style="width: 140px;">
-                                    <input type="number" step="0.01" name="price" value="{{ $item->price }}" class="form-control-hms font-mono text-right !w-28 font-bold">
+                                    <input type="number" step="0.01" name="price" form="item-price-{{ $item->id }}" min="0" required value="{{ $item->price }}" class="form-control-hms font-mono text-right !w-28 font-bold">
                                 </td>
                                 <td style="width: 120px;">
                                     <label class="flex items-center justify-center space-x-1 cursor-pointer">
-                                        <input type="checkbox" name="is_available" value="1" {{ $item->is_available ? 'checked' : '' }} class="rounded text-red-700">
+                                        <input type="checkbox" name="is_available" form="item-price-{{ $item->id }}" value="1" {{ $item->is_available ? 'checked' : '' }} class="rounded text-red-700">
                                         <span class="text-xs font-semibold">{{ $item->is_available ? 'Active' : 'Disabled' }}</span>
                                     </label>
                                 </td>
                                 <td style="width: 100px;">
-                                    <button type="submit" class="px-3 py-1 bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold rounded">
+                                    <button type="submit" form="item-price-{{ $item->id }}" class="px-3 py-1 bg-[#0284c7] hover:bg-[#0369a1] text-white text-[11px] font-bold rounded">
                                         Update
                                     </button>
                                 </td>
-                            </form>
 
                             <td style="width: 80px;">
                                 <form method="POST" action="{{ route('admin.pricing.items.destroy', $item->id) }}"
